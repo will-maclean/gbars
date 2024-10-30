@@ -1,15 +1,17 @@
-use cpu::CPU;
 use gameboy::Gameboy;
 
-pub mod instructions;
-pub mod registers;
 pub mod cpu;
 pub mod gameboy;
+pub mod instructions;
+pub mod registers;
+pub mod memory;
 
 fn main() {
     let mut gb = Gameboy::new_and_empty();
     gb.boot();
 
-    gb.cpu.step();
+    for _ in 0..50 {
+        gb.cpu.step();
+    }
     println!("Hello, world!");
 }

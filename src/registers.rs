@@ -3,10 +3,9 @@ const SUBTRACT_FLAG_BYTE_POSITION: u8 = 6;
 const HALF_CARRY_FLAG_BYTE_POSITION: u8 = 5;
 const CARRY_FLAG_BYTE_POSITION: u8 = 4;
 
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Registers {
-    pub a: u8,  // accumulator register
+    pub a: u8, // accumulator register
 
     // BC pair (general purpose)
     pub b: u8,
@@ -21,7 +20,7 @@ pub struct Registers {
     pub l: u8,
 
     // Flags Register
-    // Lower four bits are always 0s and the CPU automatically writes to the upper four bits when 
+    // Lower four bits are always 0s and the CPU automatically writes to the upper four bits when
     // certain things happen. Flags are:
     // bit7: zero
     // bit6: subtraction
@@ -60,19 +59,19 @@ impl Registers {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct FlagsRegister{
+pub struct FlagsRegister {
     pub zero: bool,
     pub subtraction: bool,
     pub half_carry: bool,
     pub carry: bool,
 }
 
-impl std::convert::From<FlagsRegister> for u8  {
+impl std::convert::From<FlagsRegister> for u8 {
     fn from(flag: FlagsRegister) -> u8 {
-        (if flag.zero       { 1 } else { 0 }) << ZERO_FLAG_BYTE_POSITION |
-        (if flag.subtraction   { 1 } else { 0 }) << SUBTRACT_FLAG_BYTE_POSITION |
-        (if flag.half_carry { 1 } else { 0 }) << HALF_CARRY_FLAG_BYTE_POSITION |
-        (if flag.carry      { 1 } else { 0 }) << CARRY_FLAG_BYTE_POSITION
+        (if flag.zero { 1 } else { 0 }) << ZERO_FLAG_BYTE_POSITION
+            | (if flag.subtraction { 1 } else { 0 }) << SUBTRACT_FLAG_BYTE_POSITION
+            | (if flag.half_carry { 1 } else { 0 }) << HALF_CARRY_FLAG_BYTE_POSITION
+            | (if flag.carry { 1 } else { 0 }) << CARRY_FLAG_BYTE_POSITION
     }
 }
 
@@ -87,7 +86,7 @@ impl std::convert::From<u8> for FlagsRegister {
             zero,
             subtraction,
             half_carry,
-            carry
+            carry,
         }
     }
 }
