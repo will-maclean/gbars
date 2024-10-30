@@ -533,10 +533,112 @@ impl CPU {
 
             Instruction::RET(test) => self._return(self.jmp_test(test)),
 
+            Instruction::RLC(target) => {
+                let (value, pc_inc) = match target {
+                    ArithmeticByteTarget::A => (self.registers.a, 2),
+                    ArithmeticByteTarget::B => (self.registers.b, 2),
+                    ArithmeticByteTarget::C => (self.registers.c, 2),
+                    ArithmeticByteTarget::D => (self.registers.d, 2),
+                    ArithmeticByteTarget::E => (self.registers.e, 2),
+                    ArithmeticByteTarget::H => (self.registers.h, 2),
+                    ArithmeticByteTarget::L => (self.registers.l, 2),
+                    ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
+                };
+
+               self.registers.f.carry = value & 1 > 0;
+
+                let new_value = value.rotate_left(1);
+
+                if self.debug_view {
+                    println!("RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}", target, value, new_value, self.registers.f.carry);
+                }
+
+                match target {
+                    ArithmeticByteTarget::A => self.registers.a = new_value,
+                    ArithmeticByteTarget::B => self.registers.b = new_value,
+                    ArithmeticByteTarget::C => self.registers.c = new_value,
+                    ArithmeticByteTarget::D => self.registers.d = new_value,
+                    ArithmeticByteTarget::E => self.registers.e = new_value,
+                    ArithmeticByteTarget::H => self.registers.h = new_value,
+                    ArithmeticByteTarget::L => self.registers.l = new_value,
+                    ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
+                }
+
+                self.pc.wrapping_add(pc_inc)
+            }
+
+            Instruction::RRC(target) => {
+                let (value, pc_inc) = match target {
+                    ArithmeticByteTarget::A => (self.registers.a, 2),
+                    ArithmeticByteTarget::B => (self.registers.b, 2),
+                    ArithmeticByteTarget::C => (self.registers.c, 2),
+                    ArithmeticByteTarget::D => (self.registers.d, 2),
+                    ArithmeticByteTarget::E => (self.registers.e, 2),
+                    ArithmeticByteTarget::H => (self.registers.h, 2),
+                    ArithmeticByteTarget::L => (self.registers.l, 2),
+                    ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
+                };
+
+               self.registers.f.carry = value & 1 > 0;
+
+                let new_value = value.rotate_right(1);
+
+                if self.debug_view {
+                    println!("RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}", target, value, new_value, self.registers.f.carry);
+                }
+
+                match target {
+                    ArithmeticByteTarget::A => self.registers.a = new_value,
+                    ArithmeticByteTarget::B => self.registers.b = new_value,
+                    ArithmeticByteTarget::C => self.registers.c = new_value,
+                    ArithmeticByteTarget::D => self.registers.d = new_value,
+                    ArithmeticByteTarget::E => self.registers.e = new_value,
+                    ArithmeticByteTarget::H => self.registers.h = new_value,
+                    ArithmeticByteTarget::L => self.registers.l = new_value,
+                    ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
+                }
+
+                self.pc.wrapping_add(pc_inc)
+            }
+
             Instruction::SCF => {
                 self.registers.f.carry = true;
 
                 self.pc.wrapping_add(1)
+            }
+
+            Instruction::SWAP(target) => {
+                let (value, pc_inc) = match target {
+                    ArithmeticByteTarget::A => (self.registers.a, 2),
+                    ArithmeticByteTarget::B => (self.registers.b, 2),
+                    ArithmeticByteTarget::C => (self.registers.c, 2),
+                    ArithmeticByteTarget::D => (self.registers.d, 2),
+                    ArithmeticByteTarget::E => (self.registers.e, 2),
+                    ArithmeticByteTarget::H => (self.registers.h, 2),
+                    ArithmeticByteTarget::L => (self.registers.l, 2),
+                    ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
+                };
+
+               self.registers.f.zero = value == 0;
+
+                let new_value = value.rotate_left(4);
+
+                if self.debug_view {
+                    println!("SWAP. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, zero={}", target, value, new_value, self.registers.f.zero);
+                }
+
+                match target {
+                    ArithmeticByteTarget::A => self.registers.a = new_value,
+                    ArithmeticByteTarget::B => self.registers.b = new_value,
+                    ArithmeticByteTarget::C => self.registers.c = new_value,
+                    ArithmeticByteTarget::D => self.registers.d = new_value,
+                    ArithmeticByteTarget::E => self.registers.e = new_value,
+                    ArithmeticByteTarget::H => self.registers.h = new_value,
+                    ArithmeticByteTarget::L => self.registers.l = new_value,
+                    ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
+                }
+
+                self.pc.wrapping_add(pc_inc)
             }
 
             Instruction::XOR(target) => match target {
