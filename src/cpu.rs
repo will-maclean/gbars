@@ -200,6 +200,7 @@ impl CPU {
                         (self.bus.read_byte(self.registers.get_hl()) & and_val) > 0,
                         2,
                     ),
+                    BitRegister::A => ((self.registers.a & and_val) > 0, 2),
                 };
 
                 self.registers.f.zero = flag_val;
@@ -531,6 +532,57 @@ impl CPU {
                 self.pc.wrapping_add(1)
             }
 
+            Instruction::RES(pos, register) => {
+                let and_val = match pos {
+                    BitPosition::Zero => 1,
+                    BitPosition::One => 2,
+                    BitPosition::Two => 4,
+                    BitPosition::Three => 8,
+                    BitPosition::Four => 16,
+                    BitPosition::Five => 32,
+                    BitPosition::Six => 64,
+                    BitPosition::Seven => 128,
+                };
+
+                let pc_inc = match register {
+                    BitRegister::B => {
+                        self.registers.b = !and_val & self.registers.b;
+                        2
+                    },
+                    BitRegister::C => {
+                        self.registers.c = !and_val & self.registers.c;
+                        2
+                    },
+                    BitRegister::D => {
+                        self.registers.d = !and_val & self.registers.d;
+                        2
+                    },
+                    BitRegister::E => {
+                        self.registers.e = !and_val & self.registers.e;
+                        2
+                    },
+                    BitRegister::H => {
+                        self.registers.h = !and_val & self.registers.h;
+                        2
+                    },
+                    BitRegister::L => {
+                        self.registers.l = !and_val & self.registers.l;
+                        2
+                    },
+                    BitRegister::HLI => {
+                        self.bus.write_byte(self.registers.get_hl(), !and_val & self.bus.read_byte(self.registers.get_hl()));
+                        
+                        4
+                    },
+                    BitRegister::A => {
+                        self.registers.a = !and_val & self.registers.a;
+                        2
+                    },
+                };
+
+                self.pc.wrapping_add(pc_inc)
+            }
+
             Instruction::RET(test) => self._return(self.jmp_test(test)),
 
             Instruction::RLC(target) => {
@@ -546,6 +598,7 @@ impl CPU {
                 };
 
                self.registers.f.carry = value & 1 > 0;
+               self.registers.f.zero = value == 0;
 
                 let new_value = value.rotate_left(1);
 
@@ -580,6 +633,7 @@ impl CPU {
                 };
 
                self.registers.f.carry = value & 1 > 0;
+               self.registers.f.zero = value == 0;
 
                 let new_value = value.rotate_right(1);
 
@@ -597,6 +651,56 @@ impl CPU {
                     ArithmeticByteTarget::L => self.registers.l = new_value,
                     ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
                 }
+
+                self.pc.wrapping_add(pc_inc)
+            }
+
+            Instruction::SET(pos, register) => {
+                let or_val = match pos {
+                    BitPosition::Zero => 1,
+                    BitPosition::One => 2,
+                    BitPosition::Two => 4,
+                    BitPosition::Three => 8,
+                    BitPosition::Four => 16,
+                    BitPosition::Five => 32,
+                    BitPosition::Six => 64,
+                    BitPosition::Seven => 128,
+                };
+
+                let pc_inc = match register {
+                    BitRegister::B => {
+                        self.registers.b = or_val | self.registers.b;
+                        2
+                    },
+                    BitRegister::C => {
+                        self.registers.c = or_val | self.registers.c;
+                        2
+                    },
+                    BitRegister::D => {
+                        self.registers.d = or_val | self.registers.d;
+                        2
+                    },
+                    BitRegister::E => {
+                        self.registers.e = or_val | self.registers.e;
+                        2
+                    },
+                    BitRegister::H => {
+                        self.registers.h = or_val | self.registers.h;
+                        2
+                    },
+                    BitRegister::L => {
+                        self.registers.l = or_val | self.registers.l;
+                        2
+                    },
+                    BitRegister::HLI => {
+                        self.bus.write_byte(self.registers.get_hl(), or_val | self.bus.read_byte(self.registers.get_hl()));
+                        4
+                    },
+                    BitRegister::A => {
+                        self.registers.a = or_val | self.registers.a;
+                        2
+                    },
+                };
 
                 self.pc.wrapping_add(pc_inc)
             }
@@ -837,4 +941,43 @@ impl CPU {
 
         msp << 8 | lsp
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_matrix;
+
+    use super::{Instruction, CPU};
+
+	#[test_matrix(
+        0x00_u8..=0xFF_u8,
+        [true, false]
+    )]
+	fn test_all_instructions_empty_cpu(opcode: u8, prefixed: bool){
+		let ndef: [u8; 12] = [
+			0xCB,
+			0xD3,
+			0xDB,
+			0xDD,
+			0xE3,
+			0xE4,
+			0xEB,
+			0xEC,
+			0xED,
+			0xF4,
+			0xFC,
+			0xFD,
+
+		];
+
+		if !prefixed && ndef.contains(&opcode) {
+            return;
+        }
+
+        let instruction = Instruction::from_byte(opcode, prefixed).unwrap();
+
+        let mut cpu = CPU::new_and_empty();
+
+        cpu.execute(instruction);
+	}
 }
