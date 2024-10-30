@@ -1,7 +1,7 @@
 use std::fs;
 
 const BOOT_ROM_LOCK_REGISTER: u16 = 0xFF50;
-const BOOT_ROM_BIN_PATH: &'static str = "resources/sgb_bios.bin";
+const BOOT_ROM_BIN_PATH: &'static str = "resources/dmg_boot.bin";
 
 pub enum MemoryRegion {
     BootROM,
@@ -95,7 +95,7 @@ impl MemoryBus {
 
         // let region = MemoryRegion::from_addr(address, booting);
         //TODO: set region access behaviour
-        
+
         return self.memory[address as usize];
     }
 
