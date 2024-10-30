@@ -268,10 +268,10 @@ impl CPU {
                 match inc_type {
                     ArithmeticTargetType::Word(target) => {
                         match target {
-                            ArithmeticWordTarget::BC => todo!(),
-                            ArithmeticWordTarget::DE => todo!(),
-                            ArithmeticWordTarget::HL => todo!(),
-                            ArithmeticWordTarget::SP => todo!(),
+                            ArithmeticWordTarget::BC => self.registers.set_bc(self.registers.get_bc().wrapping_add(1)),
+                            ArithmeticWordTarget::DE => self.registers.set_de(self.registers.get_de().wrapping_add(1)),
+                            ArithmeticWordTarget::HL => self.registers.set_hl(self.registers.get_hl().wrapping_add(1)),
+                            ArithmeticWordTarget::SP => self.sp = self.sp.wrapping_add(1),
                         };
 
                         self.pc.wrapping_add(2)
