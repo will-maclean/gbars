@@ -49,6 +49,13 @@ pub enum LdByteAddress{
 	C, A8
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum LdIndirectAddr {
+	BC,
+	DE,
+	A16,
+}
+
 #[derive(Debug)]
 pub enum LoadType {
     // Load 8 bits from LoadByteSource into LoadByteTarget
@@ -58,16 +65,16 @@ pub enum LoadType {
     Word(LoadWordTarget, LoadWordSource),
 
     // load the A register with the contents from a value from a memory location whose address is stored in some location
-    AFromIndirect(LdByteAddress),
+    AFromIndirect(LdIndirectAddr),
 
     // load a memory location whose address is stored in some location with the contents of the A register
-    IndirectFromA(LdByteAddress),
+    IndirectFromA(LdIndirectAddr),
 
     // Just like AFromIndirect except the memory address is some address in the very last byte of memory
-    // AFromByteAddress,
+    AFromByteAddress(LdByteAddress),
 
     // // Just like IndirectFromA except the memory address is some address in the very last byte of memory
-    // ByteAddressFromA,
+    ByteAddressFromA(LdByteAddress),
 
     // Store the contents of register A into the memory location specified by register pair HL, and simultaneously increment the contents of HL.
     AIntoHLInc,
@@ -216,23 +223,29 @@ impl Instruction {
         match byte {
             0x00 => Some(Instruction::NOP),
             0x01 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::BC,LoadWordSource::D16))),
-			// 0x02 => Some(Instruction::LD(LoadType::IndirectFromA(Ld))),
+			0x02 => Some(Instruction::LD(LoadType::IndirectFromA(LdIndirectAddr::BC))),
             0x03 => Some(Instruction::INC(ArithmeticTargetType::Word(ArithmeticWordTarget::BC))),
             0x04 => Some(Instruction::INC(ArithmeticTargetType::Byte(ArithmeticByteTarget::B))),
             0x05 => Some(Instruction::DEC(ArithmeticTargetType::Byte(ArithmeticByteTarget::B))),
             0x06 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B,LoadByteSource::D8))),
 			0x07 => Some(Instruction::RLC(ArithmeticByteTarget::A)),
+			0x0A => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::BC))),
 			0x0D => Some(Instruction::DEC(ArithmeticTargetType::Byte(ArithmeticByteTarget::C))),
 			0x0E => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::D8))),
+			0x09 => Some(Instruction::ADD(ArithmeticTargetType::Word(ArithmeticWordTarget::BC))),
 			0x18 => Some(Instruction::JR(JumpTest::Always)),
+			0x19 => Some(Instruction::ADD(ArithmeticTargetType::Word(ArithmeticWordTarget::DE))),
+			0x1A => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::DE))),
 			0x20 => Some(Instruction::JR(JumpTest::NotZero)),
             0x21 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::HL,LoadWordSource::D16))),
             0x22 => Some(Instruction::LD(LoadType::AIntoHLInc)),
 			0x28 => Some(Instruction::JR(JumpTest::Zero)),
+			0x29 => Some(Instruction::ADD(ArithmeticTargetType::Word(ArithmeticWordTarget::HL))),
 			0x30 => Some(Instruction::JR(JumpTest::NotCarry)),
             0x31 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::SP,LoadWordSource::D16))),
             0x32 => Some(Instruction::LD(LoadType::AIntoHLDec)),
             0x37 => Some(Instruction::SCF),
+			0x39 => Some(Instruction::ADD(ArithmeticTargetType::Word(ArithmeticWordTarget::SP))),
             0x3E => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::A,LoadByteSource::D8))),
             0x40 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B,LoadByteSource::B))),
             0x41 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B,LoadByteSource::C))),
@@ -363,10 +376,17 @@ impl Instruction {
             0xBE => Some(Instruction::CP(ArithmeticByteTarget::HLI)),
             0xBF => Some(Instruction::CP(ArithmeticByteTarget::A)),
 			0xC0 => Some(Instruction::RET(JumpTest::NotZero)),
-            0xE0 => Some(Instruction::LD(LoadType::IndirectFromA(LdByteAddress::A8))),
-			0xE2 => Some(Instruction::LD(LoadType::IndirectFromA(LdByteAddress::C))),
-			0xF0 => Some(Instruction::LD(LoadType::AFromIndirect(LdByteAddress::A8))),
-			0xF2 => Some(Instruction::LD(LoadType::AFromIndirect(LdByteAddress::C))),
+			0xC4 => Some(Instruction::CALL(JumpTest::NotZero)),
+			0xCC => Some(Instruction::CALL(JumpTest::Zero)),
+			0xCD => Some(Instruction::CALL(JumpTest::Always)),
+			0xD4 => Some(Instruction::CALL(JumpTest::NotCarry)),
+			0xDC => Some(Instruction::CALL(JumpTest::Carry)),
+            0xE0 => Some(Instruction::LD(LoadType::ByteAddressFromA(LdByteAddress::A8))),
+			0xE2 => Some(Instruction::LD(LoadType::ByteAddressFromA(LdByteAddress::C))),
+			0xEA => Some(Instruction::LD(LoadType::IndirectFromA(LdIndirectAddr::A16))),
+			0xF0 => Some(Instruction::LD(LoadType::AFromByteAddress(LdByteAddress::A8))),
+			0xF2 => Some(Instruction::LD(LoadType::AFromByteAddress(LdByteAddress::C))),
+			0xFA => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::A16))),
             _ => None,
         }
     }

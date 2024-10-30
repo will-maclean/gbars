@@ -1,6 +1,4 @@
-use crate::instructions::{
-    ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JumpTest, LdByteAddress, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget
-};
+use crate::instructions::{ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget};
 use crate::memory::MemoryBus;
 use crate::registers::Registers;
 
@@ -208,15 +206,27 @@ impl CPU {
                 self.pc.wrapping_add(pc_inc)
             }
 
-            Instruction::CALL(test) => self.call(self.jmp_test(test)),
+            Instruction::CALL(test) => {
+                let should_jump = self.jmp_test(test);
+                let new_pc = self.call(should_jump);
+
+                if self.debug_view {
+                    println!("CALL. test={:?},res={},curr_pc=0x{:x},new_pc=0x{:x}", test, should_jump, self.pc,new_pc);
+                }
+
+                new_pc
+            },
             Instruction::DEC(inc_type) => match inc_type {
                 ArithmeticTargetType::Word(target) => {
-                    match target {
-                        ArithmeticWordTarget::BC => todo!(),
-                        ArithmeticWordTarget::DE => todo!(),
-                        ArithmeticWordTarget::HL => todo!(),
-                        ArithmeticWordTarget::SP => todo!(),
+                    let val = match target {
+                        ArithmeticWordTarget::BC => self.registers.get_bc(),
+                        ArithmeticWordTarget::DE => self.registers.get_de(),
+                        ArithmeticWordTarget::HL => self.registers.get_hl(),
+                        ArithmeticWordTarget::SP => self.sp,
                     };
+
+                    let new_val = self.add_word(val);
+                    self.registers.set_hl(new_val);
 
                     self.pc.wrapping_add(2)
                 }
@@ -385,23 +395,6 @@ impl CPU {
 
                         self.pc.wrapping_add(pc_inc)
                     }
-                    // LoadType::AFromByteAddress => todo!(),
-                    // LoadType::ByteAddressFromA => {
-                    //     //TODO
-                    //     let write_addr: u16 = 0xFF00 | (self.read_next_byte() as u16);
-                    //     let write_val = self.registers.a;
-
-                    //     self.bus.write_byte(write_addr, write_val);
-
-                    //     if self.debug_view {
-                    //         println!(
-                    //             "LD (ByteAddressFromA). From source=A,value=0x{:x} to address={:x}",
-                    //             write_val, write_addr
-                    //         );
-                    //     }
-
-                    //     self.pc.wrapping_add(2)
-                    // }
                     LoadType::AIntoHLInc => {
                         let write_addr = self.registers.get_hl();
                         self.bus.write_byte(write_addr, self.registers.a);
@@ -430,7 +423,7 @@ impl CPU {
 
                         self.pc.wrapping_add(1)
                     }
-                    LoadType::AFromIndirect(ld_byte_address) => {
+                    LoadType::AFromByteAddress(ld_byte_address) => {
                         let (addr_inc, pc_inc) = match ld_byte_address {
                             LdByteAddress::C => (self.registers.c, 2),
                             LdByteAddress::A8 => (self.read_next_byte(), 3),
@@ -442,14 +435,14 @@ impl CPU {
 
                         if self.debug_view {
                             println!(
-                                "LD (AFromIndirect). From source=({:?}),value=0x{:x} to address=A",
+                                "LD (AFromByteAddress). From source=({:?}),value=0x{:x} to address=A",
                                 ld_byte_address, self.bus.read_byte(addr)
                             );
                         }
 
                         self.pc.wrapping_add(pc_inc)
                     },
-                    LoadType::IndirectFromA(ld_byte_address) => {
+                    LoadType::ByteAddressFromA(ld_byte_address) => {
                         let (addr_inc, pc_inc) = match ld_byte_address {
                             LdByteAddress::C => (self.registers.c, 2),
                             LdByteAddress::A8 => (self.read_next_byte(), 3),
@@ -461,11 +454,67 @@ impl CPU {
 
                         if self.debug_view {
                             println!(
-                                "LD (IndirectFromA). From source=A,value=0x{:x} to address=0x{:x}",
+                                "LD (ByteAddressFromA). From source=A,value=0x{:x} to address=0x{:x}",
                                 self.registers.a, addr
                             );
                         }
 
+                        self.pc.wrapping_add(pc_inc)
+                    },
+                    LoadType::AFromIndirect(addr_source) => {
+                        let (addr, pc_inc) = match addr_source {
+                            LdIndirectAddr::BC => {
+                                (self.registers.get_bc(), 2)
+                            },
+                            LdIndirectAddr::DE => {
+                                (self.registers.get_de(), 2)
+                            },
+                            LdIndirectAddr::A16 => {
+                                (self.read_next_word(), 3)
+                            },
+                        };
+                        
+                        self.registers.a = self.bus.read_byte(addr);
+
+                        if self.debug_view {
+                            println!(
+                                "LD (AFromIndirect). From source={:?},memory=0x{:x},value=0x{:x} to A",
+                                addr_source, addr, self.registers.a
+                            );
+                        }
+
+                        self.pc.wrapping_add(pc_inc)
+                    },
+                    LoadType::IndirectFromA(addr_target) => {
+                        let addr = self.read_next_word();
+                        self.bus.write_byte(addr, self.registers.a);
+
+                        let pc_inc = match addr_target {
+                            LdIndirectAddr::BC => {
+                                self.bus.write_byte(self.registers.get_bc(), self.registers.a);
+
+                                1
+                            },
+                            LdIndirectAddr::DE => {
+                                self.bus.write_byte(self.registers.get_de(), self.registers.a);
+
+                                1
+                            },
+                            LdIndirectAddr::A16 => {
+                                let write_addr = self.read_next_word();
+                                self.bus.write_byte(write_addr, self.registers.a);
+
+                                3
+                            },
+                        };
+
+                        if self.debug_view {
+                            println!(
+                                "LD (IndirectFromA). From source=A,value=0x{:x} to address=0x{:x}",
+                                self.registers.a, addr
+                            );
+                        }
+                        
                         self.pc.wrapping_add(pc_inc)
                     },
                 }
@@ -710,6 +759,27 @@ impl CPU {
 
                 self.pc.wrapping_add(1)
             }
+            Instruction::SUB(target) => {
+                let val = match target {
+                    ArithmeticByteTarget::A => self.registers.a,
+                    ArithmeticByteTarget::B => self.registers.b,
+                    ArithmeticByteTarget::C => self.registers.c,
+                    ArithmeticByteTarget::D => self.registers.d,
+                    ArithmeticByteTarget::E => self.registers.e,
+                    ArithmeticByteTarget::H => self.registers.h,
+                    ArithmeticByteTarget::L => self.registers.l,
+                    ArithmeticByteTarget::HLI => self.bus.read_byte(self.registers.get_hl()),
+                };
+
+                let new_val = self.sub(val);
+                self.registers.a = new_val;
+
+                if self.debug_view {
+                    println!("SUB. target={:?}, orig_val=0x{:x},new_val=0x{:x}", target, val, new_val);
+                }
+
+                self.pc.wrapping_add(1)
+            }
 
             Instruction::SWAP(target) => {
                 let (value, pc_inc) = match target {
@@ -807,7 +877,7 @@ impl CPU {
         self.registers.f.carry = did_overflow;
 
         //TODO: this seems very wrong
-        self.registers.f.half_carry = (self.registers.a & 0x20) == 0x20;
+        self.registers.f.half_carry = (self.registers.a & 0x20) > 0;
 
         new_value
     }
@@ -940,6 +1010,20 @@ impl CPU {
         let lsp = self.bus.read_byte(self.pc.wrapping_add(2)) as u16;
 
         msp << 8 | lsp
+    }
+
+    fn sub(&mut self, value: u8) -> u8 {
+        let (new_value, did_overflow) = self.registers.a.overflowing_sub(value);
+        self.registers.f.zero = new_value == 0;
+        self.registers.f.subtraction = true;
+        self.registers.f.carry = did_overflow;
+
+        // Half Carry is set if adding the lower nibbles of the calue and register A
+        // together result in a value bigger than 0xF. If the result is larger than 0xF
+        // than the addition caused a carry from the lower nibble to the upper nibble
+        self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
+
+        new_value
     }
 }
 
