@@ -1,4 +1,4 @@
-use crate::instructions::{ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget};
+use crate::instructions::{AddTargetType, ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget};
 use crate::memory::MemoryBus;
 use crate::registers::Registers;
 
@@ -93,7 +93,7 @@ impl CPU {
             }
 
             Instruction::ADD(arithmetic_type) => match arithmetic_type {
-                ArithmeticTargetType::Byte(target) => match target {
+                AddTargetType::Byte(target) => match target {
                     ArithmeticByteTarget::A => {
                         let value = self.registers.a;
                         let new_value = self.add_byte(value);
@@ -143,7 +143,7 @@ impl CPU {
                         self.pc.wrapping_add(2)
                     }
                 },
-                ArithmeticTargetType::Word(target) => {
+                AddTargetType::Word(target) => {
                     let value = match target {
                         ArithmeticWordTarget::BC => self.registers.get_bc(),
                         ArithmeticWordTarget::DE => self.registers.get_de(),
@@ -156,6 +156,18 @@ impl CPU {
 
                     self.pc.wrapping_add(2)
                 }
+                AddTargetType::SPS8 => {
+                    let value = self.read_next_byte().wrapping_neg();
+                    let (new_value, overflow) = self.sp.overflowing_add(value as u16);
+                    self.sp = new_value;
+
+                    self.registers.f.zero = false;
+                    self.registers.f.subtraction = false;
+                    self.registers.f.carry = overflow;
+                    self.registers.f.half_carry = (new_value & 0xF) + (new_value & 0xF) > 0xF;
+
+                    self.pc.wrapping_add(2)
+                },
             },
 
             Instruction::AND(target) => match target {
@@ -241,7 +253,53 @@ impl CPU {
                 self.registers.f.half_carry = false;
 
                 self.pc.wrapping_add(1)
-            }
+            },
+
+            Instruction::CP(target) => {
+                let (value, pc_inc) = match target {
+                    crate::instructions::CPByteTarget::A => {
+                        (self.registers.a, 1)
+                    },
+                    crate::instructions::CPByteTarget::B => {
+                        (self.registers.b, 1)
+                    },
+                    crate::instructions::CPByteTarget::C => {
+                        (self.registers.c, 1)
+                    },
+                    crate::instructions::CPByteTarget::D => {
+                        (self.registers.d, 1)
+                    },
+                    crate::instructions::CPByteTarget::E => {
+                        (self.registers.e, 1)
+                    },
+                    crate::instructions::CPByteTarget::H => {
+                        (self.registers.h, 1)
+                    },
+                    crate::instructions::CPByteTarget::L => {
+                        (self.registers.l, 1)
+                    },
+                    crate::instructions::CPByteTarget::HLI => {
+                        (self.bus.read_byte(self.registers.get_hl()), 1)
+                    },
+                    crate::instructions::CPByteTarget::D8 => {
+                        (self.read_next_byte(), 2)
+                    },
+                };
+
+                // we don't actually care about the result, so we can discard it
+                self.sub(value);
+
+                self.pc.wrapping_add(pc_inc)
+            },
+
+            Instruction::CPL => {
+                self.registers.a = self.registers.a.wrapping_neg();
+
+                self.registers.f.half_carry = true;
+                self.registers.f.subtraction = true;
+
+                self.pc.wrapping_add(1)
+            },
             Instruction::DEC(inc_type) => match inc_type {
                 ArithmeticTargetType::Word(target) => {
                     let val = match target {
@@ -438,6 +496,10 @@ impl CPU {
                                 self.registers.set_hl(source_value);
                                 3
                             }
+                            LoadWordTarget::DE => {
+                                self.registers.set_de(source_value);
+                                3
+                            },
                         };
 
                         if self.debug_view {
@@ -858,9 +920,12 @@ impl CPU {
 
             Instruction::SCF => {
                 self.registers.f.carry = true;
+                self.registers.f.half_carry = false;
+                self.registers.f.subtraction = false;
 
                 self.pc.wrapping_add(1)
-            }
+            },
+
             Instruction::SUB(target) => {
                 let val = match target {
                     ArithmeticByteTarget::A => self.registers.a,
