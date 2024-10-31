@@ -11,7 +11,6 @@ pub struct CPU {
     sp: u16,
     bus: MemoryBus,
     is_halted: bool,
-    is_booting: bool,
     debug_view: bool,
 }
 
@@ -23,7 +22,6 @@ impl CPU {
             sp: 0xFFFF,
             bus: MemoryBus::new_and_load_bios(),
             is_halted: false,
-            is_booting: true,
             debug_view: true,
         }
     }
@@ -34,14 +32,12 @@ impl CPU {
             sp: 0xFFFF,
             bus: MemoryBus::new_and_empty(),
             is_halted: false,
-            is_booting: true,
             debug_view: true,
         }
     }
     pub fn reset(&mut self) {
         self.sp = 0xFFFF;
         self.pc = 0;
-        self.is_booting = true;
     }
 
     pub fn load_cartridge(&mut self, path: &str) {
@@ -59,10 +55,11 @@ impl CPU {
         self.pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefix) {
             if self.debug_view {
                 print!(
-                    "Executing instruction: 0x{}{:x}. pc=0x{:x}\n",
+                    "Executing instruction: 0x{}{:x}. pc=0x{:x} (boot mode active: {})\n",
                     if prefix { "cb" } else { "" },
                     instruction_byte,
-                    self.pc
+                    self.pc,
+                    self.bus.boot_mode_active()
                 )
             }
             self.execute(instruction)
@@ -78,6 +75,23 @@ impl CPU {
         }
 
         match instruction {
+            Instruction::ADC(target) => {
+                let (val, pc_inc) = match target {
+                    ArithmeticByteTarget::A => (self.registers.a, 1),
+                    ArithmeticByteTarget::B => (self.registers.b, 1),
+                    ArithmeticByteTarget::C => (self.registers.c, 1),
+                    ArithmeticByteTarget::D => (self.registers.d, 1),
+                    ArithmeticByteTarget::E => (self.registers.e, 1),
+                    ArithmeticByteTarget::H => (self.registers.h, 1),
+                    ArithmeticByteTarget::L => (self.registers.l, 1),
+                    ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 1),
+                };
+
+                self.registers.a = self.add_byte(val + (self.registers.f.carry as u8));
+
+                self.pc.wrapping_add(pc_inc)
+            }
+
             Instruction::ADD(arithmetic_type) => match arithmetic_type {
                 ArithmeticTargetType::Byte(target) => match target {
                     ArithmeticByteTarget::A => {
@@ -220,6 +234,14 @@ impl CPU {
 
                 new_pc
             },
+
+            Instruction::CCF => {
+                self.registers.f.carry = !self.registers.f.carry;
+                self.registers.f.subtraction = false;
+                self.registers.f.half_carry = false;
+
+                self.pc.wrapping_add(1)
+            }
             Instruction::DEC(inc_type) => match inc_type {
                 ArithmeticTargetType::Word(target) => {
                     let val = match target {
@@ -700,7 +722,9 @@ impl CPU {
             }
 
             Instruction::RLA => {
-                //TODO
+                let old_carry = self.registers.f.carry;
+                self.registers.f.carry = (self.registers.a & 128) > 0;
+                self.registers.a = self.registers.a.rotate_left(1) | (old_carry as u8);
                 self.pc.wrapping_add(1)
             }
 
@@ -740,7 +764,10 @@ impl CPU {
             }
 
             Instruction::RRA => {
-                //TODO
+                let old_carry = self.registers.f.carry;
+
+                self.registers.f.carry = (self.registers.a & 1) > 0;
+                self.registers.a = self.registers.a.rotate_right(1) | (128 * (old_carry as u8));
                 self.pc.wrapping_add(1)
             }
 

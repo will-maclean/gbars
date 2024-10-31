@@ -136,11 +136,11 @@ impl MemoryBus {
         self.memory[address as usize] = value;
     }
 
-    pub fn set_done_booting(&mut self) {
-        self.memory[BOOT_ROM_LOCK_REGISTER as usize] = 1;
-    }
-
     pub fn reset(&mut self) {
         self.memory[BOOT_ROM_LOCK_REGISTER as usize] = 0;
+    }
+
+    pub fn boot_mode_active(&self) -> bool {
+        self.memory[BOOT_ROM_LOCK_REGISTER as usize] == 0
     }
 }

@@ -133,6 +133,9 @@ pub enum Instruction {
 	// Call
 	CALL(JumpTest),
 
+	// Flip carry flag
+	CCF,
+
 	// Compare
 	CP(ArithmeticByteTarget),
 
@@ -251,6 +254,7 @@ impl Instruction {
             0x37 => Some(Instruction::SCF),
 			0x39 => Some(Instruction::ADD(ArithmeticTargetType::Word(ArithmeticWordTarget::SP))),
             0x3E => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::A,LoadByteSource::D8))),
+			0x3F => Some(Instruction::CCF),
             0x40 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B,LoadByteSource::B))),
             0x41 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B,LoadByteSource::C))),
             0x42 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B,LoadByteSource::D))),
