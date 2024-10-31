@@ -13,4 +13,8 @@ impl Gameboy {
     pub fn boot(&mut self) {
         self.cpu.reset();
     }
+
+    pub fn load_cartridge(&mut self, path: &str){
+        self.cpu.load_cartridge(path);
+    }
 }

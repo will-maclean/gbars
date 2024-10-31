@@ -48,8 +48,17 @@ impl Registers {
         self.l = (value & 0xFF) as u8;
     }
 
+    pub fn set_af(&mut self, value: u16) {
+        self.a = ((value & 0xFF00) >> 8) as u8;
+        self.f = FlagsRegister::from((value & 0xFF) as u8);
+    }
+
     pub fn get_de(&self) -> u16 {
         (self.d as u16) << 8 | self.e as u16
+    }
+
+    pub fn get_af(&self) -> u16 {
+        (self.a as u16) << 8 | u8::from(self.f) as u16
     }
 
     pub fn set_de(&mut self, value: u16) {

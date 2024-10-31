@@ -88,6 +88,7 @@ pub enum StackTarget {
     BC,
     DE,
     HL,
+	AF,
 }
 
 #[derive(Debug)]
@@ -178,7 +179,9 @@ pub enum Instruction {
 	// of the register. The previous contents of the carry (CY) flag are copied to bit 0 of
 	// register ArithmeticByteTarget.
 	RL(ArithmeticByteTarget),
+	RLA,
 	RR(ArithmeticByteTarget),
+	RRA,
 
 	// Rotate left and copy to carry
 	// Rotate the contents of register ArithmeticByteTarget to the left. That is, the contents of bit 
@@ -207,7 +210,6 @@ pub enum Instruction {
 	SWAP(ArithmeticByteTarget),
 
     XOR(ArithmeticByteTarget),
-    // TODO: implement the other instruction types
 }
 
 impl Instruction {
@@ -233,9 +235,11 @@ impl Instruction {
 			0x0D => Some(Instruction::DEC(ArithmeticTargetType::Byte(ArithmeticByteTarget::C))),
 			0x0E => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::D8))),
 			0x09 => Some(Instruction::ADD(ArithmeticTargetType::Word(ArithmeticWordTarget::BC))),
+			0x17 => Some(Instruction::RLA),
 			0x18 => Some(Instruction::JR(JumpTest::Always)),
 			0x19 => Some(Instruction::ADD(ArithmeticTargetType::Word(ArithmeticWordTarget::DE))),
 			0x1A => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::DE))),
+			0x1F => Some(Instruction::RRA),
 			0x20 => Some(Instruction::JR(JumpTest::NotZero)),
             0x21 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::HL,LoadWordSource::D16))),
             0x22 => Some(Instruction::LD(LoadType::AIntoHLInc)),
@@ -376,16 +380,24 @@ impl Instruction {
             0xBE => Some(Instruction::CP(ArithmeticByteTarget::HLI)),
             0xBF => Some(Instruction::CP(ArithmeticByteTarget::A)),
 			0xC0 => Some(Instruction::RET(JumpTest::NotZero)),
+			0xC1 => Some(Instruction::POP(StackTarget::BC)),
 			0xC4 => Some(Instruction::CALL(JumpTest::NotZero)),
+			0xC5 => Some(Instruction::PUSH(StackTarget::BC)),
 			0xCC => Some(Instruction::CALL(JumpTest::Zero)),
 			0xCD => Some(Instruction::CALL(JumpTest::Always)),
+			0xD1 => Some(Instruction::POP(StackTarget::DE)),
 			0xD4 => Some(Instruction::CALL(JumpTest::NotCarry)),
+			0xD5 => Some(Instruction::PUSH(StackTarget::DE)),
 			0xDC => Some(Instruction::CALL(JumpTest::Carry)),
             0xE0 => Some(Instruction::LD(LoadType::ByteAddressFromA(LdByteAddress::A8))),
+			0xE1 => Some(Instruction::POP(StackTarget::HL)),
 			0xE2 => Some(Instruction::LD(LoadType::ByteAddressFromA(LdByteAddress::C))),
+			0xE5 => Some(Instruction::PUSH(StackTarget::HL)),
 			0xEA => Some(Instruction::LD(LoadType::IndirectFromA(LdIndirectAddr::A16))),
 			0xF0 => Some(Instruction::LD(LoadType::AFromByteAddress(LdByteAddress::A8))),
+			0xF1 => Some(Instruction::POP(StackTarget::AF)),
 			0xF2 => Some(Instruction::LD(LoadType::AFromByteAddress(LdByteAddress::C))),
+			0xF5 => Some(Instruction::PUSH(StackTarget::AF)),
 			0xFA => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::A16))),
             _ => None,
         }
