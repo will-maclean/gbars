@@ -1,4 +1,4 @@
-use crate::instructions::{AddTargetType, ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget};
+use crate::instructions::{AddTargetType, ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget};
 use crate::memory::MemoryBus;
 use crate::registers::Registers;
 
@@ -45,6 +45,9 @@ impl CPU {
     }
 
     pub fn step(&mut self) {
+        if self.pc > 0xfe {
+            panic!("ROM finished")
+        }
         let mut instruction_byte = self.bus.read_byte(self.pc);
 
         let prefix = instruction_byte == 0xCB;
@@ -55,7 +58,7 @@ impl CPU {
         self.pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefix) {
             if self.debug_view {
                 print!(
-                    "Executing instruction: 0x{}{:x}. pc=0x{:x} (boot mode active: {})\n",
+                    "\n\nExecuting instruction: 0x{}{:x}. pc=0x{:x} (boot mode active: {})\n",
                     if prefix { "cb" } else { "" },
                     instruction_byte,
                     self.pc,
@@ -157,9 +160,9 @@ impl CPU {
                     self.pc.wrapping_add(2)
                 }
                 AddTargetType::SPS8 => {
-                    let value = self.read_next_byte().wrapping_neg();
-                    let (new_value, overflow) = self.sp.overflowing_add(value as u16);
-                    self.sp = new_value;
+                    let value = self.read_next_byte();
+                    let (new_value, overflow) = self.sp.overflowing_add_signed(value.into());
+                    self.sp = new_value as u16;
 
                     self.registers.f.zero = false;
                     self.registers.f.subtraction = false;
@@ -293,7 +296,7 @@ impl CPU {
             },
 
             Instruction::CPL => {
-                self.registers.a = self.registers.a.wrapping_neg();
+                self.registers.a = !self.registers.a;
 
                 self.registers.f.half_carry = true;
                 self.registers.f.subtraction = true;
@@ -418,17 +421,26 @@ impl CPU {
                     }
                 }
             }
-            Instruction::JP(test) => {
+            Instruction::JP(test, target) => {
                 let jump_condition = self.jmp_test(test);
-                self.jump(jump_condition)
+
+                match target {
+                    JpAddrLoc::A16 => self.jump(jump_condition),
+                    JpAddrLoc::HL => self.registers.get_hl(),
+                }
             }
 
             Instruction::JR(test) => {
                 if self.jmp_test(test.clone()){
+                    let offset = (self.read_next_byte() as i8).wrapping_add(2).into();
+                    let new_pc = self.pc.wrapping_add_signed(offset);
+
                     if self.debug_view {
-                        println!("JR ({:?}), test succesful, jumping 0x{:x}\n", test, self.read_next_byte());
+                        println!("JR ({:?}), test succesful, jumping {}(unsigned=0x{:x}) + pc=0x{:x} = 0x{:x}", 
+                        test, offset, self.read_next_byte(), self.pc, new_pc);
                     }
-                    self.pc.wrapping_add(self.read_next_byte() as u16)
+
+                    new_pc
                 } else {
                     if self.debug_view {
                         println!("JR ({:?}), test failed, jumping 2", test);
@@ -560,8 +572,8 @@ impl CPU {
                     },
                     LoadType::ByteAddressFromA(ld_byte_address) => {
                         let (addr_inc, pc_inc) = match ld_byte_address {
-                            LdByteAddress::C => (self.registers.c, 2),
-                            LdByteAddress::A8 => (self.read_next_byte(), 3),
+                            LdByteAddress::C => (self.registers.c, 1),
+                            LdByteAddress::A8 => (self.read_next_byte(), 2),
                         };
 
                         let addr = 0xFF00 + addr_inc as u16;
@@ -580,10 +592,10 @@ impl CPU {
                     LoadType::AFromIndirect(addr_source) => {
                         let (addr, pc_inc) = match addr_source {
                             LdIndirectAddr::BC => {
-                                (self.registers.get_bc(), 2)
+                                (self.registers.get_bc(), 1)
                             },
                             LdIndirectAddr::DE => {
-                                (self.registers.get_de(), 2)
+                                (self.registers.get_de(), 1)
                             },
                             LdIndirectAddr::A16 => {
                                 (self.read_next_word(), 3)
@@ -693,6 +705,10 @@ impl CPU {
 
                 self.push(value);
 
+                if self.debug_view {
+                    println!("PUSH. target={:?},value=0x{:x}", target, value);
+                }
+
                 self.pc.wrapping_add(1)
             }
 
@@ -761,7 +777,7 @@ impl CPU {
                     ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
                 };
 
-                let new_value = value.rotate_left(1) & (128 * self.registers.f.carry as u8);
+                let new_value = value.rotate_left(1) | (128 * self.registers.f.carry as u8);
                 self.registers.f.carry = value & 1 > 0;
                 self.registers.f.zero = value == 0;
 
@@ -1157,7 +1173,11 @@ impl CPU {
         let next_pc = self.pc.wrapping_add(3);
         if should_jump {
             self.push(next_pc);
-            self.read_next_word()
+            let new_pc = self.read_next_word();
+            let return_pc = self.pc.wrapping_add(3);
+            self.push(return_pc);
+
+            new_pc
         } else {
             next_pc
         }

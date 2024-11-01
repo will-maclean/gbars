@@ -7,7 +7,7 @@ pub enum JumpTest {
     Always,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum LoadByteTarget {
     A,
     B,
@@ -18,7 +18,7 @@ pub enum LoadByteTarget {
     L,
     HLI,
 }
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum LoadByteSource {
     A,
     B,
@@ -31,7 +31,7 @@ pub enum LoadByteSource {
     HLI,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum LoadWordTarget {
     BC,
 	DE,
@@ -39,7 +39,7 @@ pub enum LoadWordTarget {
     SP,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum LoadWordSource {
     BC,
     D16,
@@ -57,7 +57,7 @@ pub enum LdIndirectAddr {
 	A16,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum LoadType {
     // Load 8 bits from LoadByteSource into LoadByteTarget
     Byte(LoadByteTarget, LoadByteSource),
@@ -84,7 +84,7 @@ pub enum LoadType {
     AIntoHLDec,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum StackTarget {
     BC,
     DE,
@@ -92,20 +92,20 @@ pub enum StackTarget {
 	AF,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum ArithmeticTargetType {
     Byte(ArithmeticByteTarget),
     Word(ArithmeticWordTarget),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum AddTargetType {
     Byte(ArithmeticByteTarget),
     Word(ArithmeticWordTarget),
 	SPS8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum BitPosition {
     Zero,
     One,
@@ -117,7 +117,7 @@ pub enum BitPosition {
     Seven,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum BitRegister {
     B,
     C,
@@ -127,6 +127,12 @@ pub enum BitRegister {
     L,
     HLI,
 	A
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum JpAddrLoc {
+	A16,
+	HL,
 }
 
 #[derive(Debug)]
@@ -153,6 +159,15 @@ pub enum Instruction {
 	// Decrement
 	DEC(ArithmeticTargetType),
 
+	// Set the interrupt master enable (IME) flag and enable maskable interrupts. 
+	// This instruction can be used in an interrupt routine to enable higher-order interrupts.
+	// The IME flag is reset immediately after an interrupt occurs. The IME flag 
+	// reset remains in effect if coontrol is returned from the interrupt routine by 
+	// a RET instruction. However, if an EI instruction is executed in the interrupt 
+	// routine, control is returned with IME = 1.
+	EI,
+
+
 	// Halt
 	HALT,
 
@@ -162,7 +177,7 @@ pub enum Instruction {
 	// Jump to a particular address dependent on one of the following
 	// conditions: the zero flag is true, the zero flag is flase, the
 	// carry flag is true, the carry flag is false, or always jump.
-	JP(JumpTest),
+	JP(JumpTest, JpAddrLoc),
 	
 	JR(JumpTest),
 	
@@ -205,6 +220,8 @@ pub enum Instruction {
 	// CY flag and bit 0 of register ArithmeticByteTarget.
 	RLC(ArithmeticByteTarget),
 	RRC(ArithmeticByteTarget),
+
+	RST(BitPosition),
 	
 	// Subtract byte and carry
 	SBC(ArithmeticByteTarget),
@@ -245,12 +262,14 @@ impl Instruction {
             0x05 => Some(Instruction::DEC(ArithmeticTargetType::Byte(ArithmeticByteTarget::B))),
             0x06 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B,LoadByteSource::D8))),
 			0x07 => Some(Instruction::RLC(ArithmeticByteTarget::A)),
+			0x09 => Some(Instruction::ADD(AddTargetType::Word(ArithmeticWordTarget::BC))),
 			0x0A => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::BC))),
 			0x0B => Some(Instruction::DEC(ArithmeticTargetType::Word(ArithmeticWordTarget::BC))),
+			0x0C => Some(Instruction::INC(ArithmeticTargetType::Byte(ArithmeticByteTarget::C))),
 			0x0D => Some(Instruction::DEC(ArithmeticTargetType::Byte(ArithmeticByteTarget::C))),
 			0x0E => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::C, LoadByteSource::D8))),
-			0x09 => Some(Instruction::ADD(AddTargetType::Word(ArithmeticWordTarget::BC))),
 			0x11 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::DE, LoadWordSource::D16))),
+			0x14 => Some(Instruction::INC(ArithmeticTargetType::Byte(ArithmeticByteTarget::D))),
 			0x17 => Some(Instruction::RLA),
 			0x18 => Some(Instruction::JR(JumpTest::Always)),
 			0x19 => Some(Instruction::ADD(AddTargetType::Word(ArithmeticWordTarget::DE))),
@@ -402,27 +421,37 @@ impl Instruction {
             0xBF => Some(Instruction::CP(CPByteTarget::A)),
 			0xC0 => Some(Instruction::RET(JumpTest::NotZero)),
 			0xC1 => Some(Instruction::POP(StackTarget::BC)),
+			0xC3 => Some(Instruction::JP(JumpTest::Always, JpAddrLoc::A16)),
 			0xC4 => Some(Instruction::CALL(JumpTest::NotZero)),
+			0xC7 => Some(Instruction::RST(BitPosition::Zero)),
 			0xC5 => Some(Instruction::PUSH(StackTarget::BC)),
 			0xCC => Some(Instruction::CALL(JumpTest::Zero)),
 			0xCD => Some(Instruction::CALL(JumpTest::Always)),
+			0xCF => Some(Instruction::RST(BitPosition::One)),
 			0xD1 => Some(Instruction::POP(StackTarget::DE)),
 			0xD4 => Some(Instruction::CALL(JumpTest::NotCarry)),
 			0xD5 => Some(Instruction::PUSH(StackTarget::DE)),
+			0xD7 => Some(Instruction::RST(BitPosition::Two)),
 			0xDC => Some(Instruction::CALL(JumpTest::Carry)),
+			0xDF => Some(Instruction::RST(BitPosition::Three)),
             0xE0 => Some(Instruction::LD(LoadType::ByteAddressFromA(LdByteAddress::A8))),
 			0xE1 => Some(Instruction::POP(StackTarget::HL)),
 			0xE2 => Some(Instruction::LD(LoadType::ByteAddressFromA(LdByteAddress::C))),
 			0xE5 => Some(Instruction::PUSH(StackTarget::HL)),
+			0xE7 => Some(Instruction::RST(BitPosition::Four)),
 			0xE8 => Some(Instruction::ADD(AddTargetType::SPS8)),
-			0xE9 => Some(Instruction::JP(JumpTest::Always)),
+			0xE9 => Some(Instruction::JP(JumpTest::Always, JpAddrLoc::HL)),
 			0xEA => Some(Instruction::LD(LoadType::IndirectFromA(LdIndirectAddr::A16))),
+			0xEF => Some(Instruction::RST(BitPosition::Five)),
 			0xF0 => Some(Instruction::LD(LoadType::AFromByteAddress(LdByteAddress::A8))),
 			0xF1 => Some(Instruction::POP(StackTarget::AF)),
 			0xF2 => Some(Instruction::LD(LoadType::AFromByteAddress(LdByteAddress::C))),
 			0xF5 => Some(Instruction::PUSH(StackTarget::AF)),
+			0xF7 => Some(Instruction::RST(BitPosition::Six)),
 			0xFA => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::A16))),
+			0xFB => Some(Instruction::EI),
 			0xFE => Some(Instruction::CP(CPByteTarget::D8)),
+			0xFF => Some(Instruction::RST(BitPosition::Seven)),
             _ => None,
         }
     }
@@ -689,7 +718,7 @@ impl Instruction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum ArithmeticByteTarget {
     A,
     B,
@@ -701,7 +730,7 @@ pub enum ArithmeticByteTarget {
     HLI,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum CPByteTarget {
     A,
     B,
@@ -714,7 +743,7 @@ pub enum CPByteTarget {
 	D8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum ArithmeticWordTarget {
     BC,
     DE,
