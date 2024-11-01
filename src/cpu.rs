@@ -1,4 +1,4 @@
-use crate::instructions::{AddTargetType, ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget};
+use crate::instructions::{AdcTargetType, AddTargetType, ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget};
 use crate::memory::MemoryBus;
 use crate::registers::Registers;
 
@@ -80,14 +80,15 @@ impl CPU {
         match instruction {
             Instruction::ADC(target) => {
                 let (val, pc_inc) = match target {
-                    ArithmeticByteTarget::A => (self.registers.a, 1),
-                    ArithmeticByteTarget::B => (self.registers.b, 1),
-                    ArithmeticByteTarget::C => (self.registers.c, 1),
-                    ArithmeticByteTarget::D => (self.registers.d, 1),
-                    ArithmeticByteTarget::E => (self.registers.e, 1),
-                    ArithmeticByteTarget::H => (self.registers.h, 1),
-                    ArithmeticByteTarget::L => (self.registers.l, 1),
-                    ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 1),
+                    AdcTargetType::A => (self.registers.a, 1),
+                    AdcTargetType::B => (self.registers.b, 1),
+                    AdcTargetType::C => (self.registers.c, 1),
+                    AdcTargetType::D => (self.registers.d, 1),
+                    AdcTargetType::E => (self.registers.e, 1),
+                    AdcTargetType::H => (self.registers.h, 1),
+                    AdcTargetType::L => (self.registers.l, 1),
+                    AdcTargetType::HLI => (self.bus.read_byte(self.registers.get_hl()), 1),
+                    AdcTargetType::D8 => (self.read_next_byte(), 2),
                 };
 
                 self.registers.a = self.add_byte(val + (self.registers.f.carry as u8));

@@ -135,9 +135,22 @@ pub enum JpAddrLoc {
 	HL,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum AdcTargetType {
+	A,
+	B,
+	C,
+	D,
+	E,
+	H,
+	L,
+	HLI,
+	D8,
+}
+
 #[derive(Debug)]
 pub enum Instruction {
-	ADC(ArithmeticByteTarget),
+	ADC(AdcTargetType),
     ADD(AddTargetType),
     AND(ArithmeticByteTarget),
 
@@ -262,6 +275,7 @@ impl Instruction {
             0x05 => Some(Instruction::DEC(ArithmeticTargetType::Byte(ArithmeticByteTarget::B))),
             0x06 => Some(Instruction::LD(LoadType::Byte(LoadByteTarget::B,LoadByteSource::D8))),
 			0x07 => Some(Instruction::RLC(ArithmeticByteTarget::A)),
+			0x08 => Some(Instruction::DEC(ArithmeticTargetType::Word(ArithmeticWordTarget::BC))),
 			0x09 => Some(Instruction::ADD(AddTargetType::Word(ArithmeticWordTarget::BC))),
 			0x0A => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::BC))),
 			0x0B => Some(Instruction::DEC(ArithmeticTargetType::Word(ArithmeticWordTarget::BC))),
@@ -279,6 +293,7 @@ impl Instruction {
 			0x20 => Some(Instruction::JR(JumpTest::NotZero)),
             0x21 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::HL,LoadWordSource::D16))),
             0x22 => Some(Instruction::LD(LoadType::AIntoHLInc)),
+			0x23 => Some(Instruction::INC(ArithmeticTargetType::Word(ArithmeticWordTarget::BC))),
 			0x28 => Some(Instruction::JR(JumpTest::Zero)),
 			0x29 => Some(Instruction::ADD(AddTargetType::Word(ArithmeticWordTarget::HL))),
 			0x2B => Some(Instruction::DEC(ArithmeticTargetType::Word(ArithmeticWordTarget::HL))),
@@ -363,14 +378,14 @@ impl Instruction {
             0x85 => Some(Instruction::ADD(AddTargetType::Byte(ArithmeticByteTarget::L))),
             0x86 => Some(Instruction::ADD(AddTargetType::Byte(ArithmeticByteTarget::HLI))),
             0x87 => Some(Instruction::ADD(AddTargetType::Byte(ArithmeticByteTarget::A))),
-			0x88 => Some(Instruction::ADC(ArithmeticByteTarget::B)),
-			0x89 => Some(Instruction::ADC(ArithmeticByteTarget::C)),
-			0x8A => Some(Instruction::ADC(ArithmeticByteTarget::D)),
-			0x8B => Some(Instruction::ADC(ArithmeticByteTarget::E)),
-			0x8C => Some(Instruction::ADC(ArithmeticByteTarget::H)),
-			0x8D => Some(Instruction::ADC(ArithmeticByteTarget::L)),
-			0x8E => Some(Instruction::ADC(ArithmeticByteTarget::HLI)),
-			0x8F => Some(Instruction::ADC(ArithmeticByteTarget::A)),
+			0x88 => Some(Instruction::ADC(AdcTargetType::B)),
+			0x89 => Some(Instruction::ADC(AdcTargetType::C)),
+			0x8A => Some(Instruction::ADC(AdcTargetType::D)),
+			0x8B => Some(Instruction::ADC(AdcTargetType::E)),
+			0x8C => Some(Instruction::ADC(AdcTargetType::H)),
+			0x8D => Some(Instruction::ADC(AdcTargetType::L)),
+			0x8E => Some(Instruction::ADC(AdcTargetType::HLI)),
+			0x8F => Some(Instruction::ADC(AdcTargetType::A)),
             0x90 => Some(Instruction::SUB(ArithmeticByteTarget::B)),
             0x91 => Some(Instruction::SUB(ArithmeticByteTarget::C)),
             0x92 => Some(Instruction::SUB(ArithmeticByteTarget::D)),
@@ -427,6 +442,7 @@ impl Instruction {
 			0xC5 => Some(Instruction::PUSH(StackTarget::BC)),
 			0xCC => Some(Instruction::CALL(JumpTest::Zero)),
 			0xCD => Some(Instruction::CALL(JumpTest::Always)),
+			0xCE => Some(Instruction::ADC(AdcTargetType::D8)),
 			0xCF => Some(Instruction::RST(BitPosition::One)),
 			0xD1 => Some(Instruction::POP(StackTarget::DE)),
 			0xD4 => Some(Instruction::CALL(JumpTest::NotCarry)),
