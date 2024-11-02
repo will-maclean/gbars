@@ -1,4 +1,4 @@
-use crate::instructions::{AdcTargetType, AddTargetType, ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget};
+use crate::instructions::{AdcTargetType, AddByteTarget, AddTargetType, ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, StackTarget, SubByteTarget};
 use crate::memory::MemoryBus;
 use crate::registers::Registers;
 
@@ -12,6 +12,7 @@ pub struct CPU {
     bus: MemoryBus,
     is_halted: bool,
     debug_view: bool,
+    instruction_counter: i64,
 }
 
 impl CPU {
@@ -23,6 +24,7 @@ impl CPU {
             bus: MemoryBus::new_and_load_bios(),
             is_halted: false,
             debug_view: true,
+            instruction_counter: 0,
         }
     }
     pub fn new_and_empty() -> Self {
@@ -33,6 +35,7 @@ impl CPU {
             bus: MemoryBus::new_and_empty(),
             is_halted: false,
             debug_view: true,
+            instruction_counter: 0,
         }
     }
     pub fn reset(&mut self) {
@@ -45,7 +48,7 @@ impl CPU {
     }
 
     pub fn step(&mut self) {
-        if self.pc > 0xfe {
+        if !self.bus.boot_mode_active() {
             panic!("ROM finished")
         }
         let mut instruction_byte = self.bus.read_byte(self.pc);
@@ -57,12 +60,15 @@ impl CPU {
 
         self.pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefix) {
             if self.debug_view {
-                print!(
-                    "\n\nExecuting instruction: 0x{}{:x}. pc=0x{:x} (boot mode active: {})\n",
+                println!(
+                    "\n\n{}: Executing instruction: 0x{}{:x}. pc=0x{:x} (boot mode active: {})\n{:?}\nsp=0x{:x}",
+                    self.instruction_counter,
                     if prefix { "cb" } else { "" },
                     instruction_byte,
                     self.pc,
-                    self.bus.boot_mode_active()
+                    self.bus.boot_mode_active(),
+                    self.registers,
+                    self.sp
                 )
             }
             self.execute(instruction)
@@ -70,6 +76,8 @@ impl CPU {
             let description = format!("0x{}{:x}", if prefix { "cb" } else { "" }, instruction_byte);
             panic!("Unkown instruction found for: {}", description)
         };
+
+        self.instruction_counter += 1;
     }
 
     fn execute(&mut self, instruction: Instruction) -> u16 {
@@ -98,54 +106,57 @@ impl CPU {
 
             Instruction::ADD(arithmetic_type) => match arithmetic_type {
                 AddTargetType::Byte(target) => match target {
-                    ArithmeticByteTarget::A => {
+                    AddByteTarget::A => {
                         let value = self.registers.a;
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(1)
                     }
-                    ArithmeticByteTarget::B => {
+                    AddByteTarget::B => {
                         let value = self.registers.b;
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(1)
                     }
-                    ArithmeticByteTarget::C => {
+                    AddByteTarget::C => {
                         let value = self.registers.c;
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(1)
                     }
-                    ArithmeticByteTarget::D => {
+                    AddByteTarget::D => {
                         let value = self.registers.d;
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(1)
                     }
-                    ArithmeticByteTarget::E => {
+                    AddByteTarget::E => {
                         let value = self.registers.e;
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(1)
                     }
-                    ArithmeticByteTarget::H => {
+                    AddByteTarget::H => {
                         let value = self.registers.h;
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(1)
                     }
-                    ArithmeticByteTarget::L => {
+                    AddByteTarget::L => {
                         let value = self.registers.l;
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(1)
                     }
-                    ArithmeticByteTarget::HLI => {
+                    AddByteTarget::HLI => {
                         let value = self.bus.read_byte(self.registers.get_hl());
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(2)
                     }
+                    AddByteTarget::D8 => {
+                        todo!()
+                    },
                 },
                 AddTargetType::Word(target) => {
                     let value = match target {
@@ -376,7 +387,11 @@ impl CPU {
                             ArithmeticWordTarget::SP => self.sp = self.sp.wrapping_add(1),
                         };
 
-                        self.pc.wrapping_add(2)
+                        if self.debug_view {
+                            println!("INC (word) target=({:?})", target)
+                        };
+
+                        self.pc.wrapping_add(1)
                     }
                     ArithmeticTargetType::Byte(arithmetic_byte_target) => {
                         let pc_inc = match arithmetic_byte_target {
@@ -707,7 +722,7 @@ impl CPU {
                 self.push(value);
 
                 if self.debug_view {
-                    println!("PUSH. target={:?},value=0x{:x}", target, value);
+                    println!("PUSH. target={:?},value=0x{:x} (sp=0x{:x})", target, value, self.sp);
                 }
 
                 self.pc.wrapping_add(1)
@@ -885,6 +900,28 @@ impl CPU {
                 self.pc.wrapping_add(pc_inc)
             }
 
+            Instruction::SBC(target) => {
+                let val = match target {
+                    ArithmeticByteTarget::A => self.registers.a,
+                    ArithmeticByteTarget::B => self.registers.b,
+                    ArithmeticByteTarget::C => self.registers.c,
+                    ArithmeticByteTarget::D => self.registers.d,
+                    ArithmeticByteTarget::E => self.registers.e,
+                    ArithmeticByteTarget::H => self.registers.h,
+                    ArithmeticByteTarget::L => self.registers.l,
+                    ArithmeticByteTarget::HLI => self.bus.read_byte(self.registers.get_hl()),
+                };
+
+                let new_val = self.sub(val.wrapping_add(self.registers.f.carry as u8));
+                self.registers.a = new_val;
+
+                if self.debug_view {
+                    println!("SBC. target={:?}, orig_val=0x{:x},new_val=0x{:x}", target, val, new_val);
+                }
+
+                self.pc.wrapping_add(1)
+            }
+
             Instruction::SET(pos, register) => {
                 let or_val = match pos {
                     BitPosition::Zero => 1,
@@ -945,14 +982,15 @@ impl CPU {
 
             Instruction::SUB(target) => {
                 let val = match target {
-                    ArithmeticByteTarget::A => self.registers.a,
-                    ArithmeticByteTarget::B => self.registers.b,
-                    ArithmeticByteTarget::C => self.registers.c,
-                    ArithmeticByteTarget::D => self.registers.d,
-                    ArithmeticByteTarget::E => self.registers.e,
-                    ArithmeticByteTarget::H => self.registers.h,
-                    ArithmeticByteTarget::L => self.registers.l,
-                    ArithmeticByteTarget::HLI => self.bus.read_byte(self.registers.get_hl()),
+                    SubByteTarget::A => self.registers.a,
+                    SubByteTarget::B => self.registers.b,
+                    SubByteTarget::C => self.registers.c,
+                    SubByteTarget::D => self.registers.d,
+                    SubByteTarget::E => self.registers.e,
+                    SubByteTarget::H => self.registers.h,
+                    SubByteTarget::L => self.registers.l,
+                    SubByteTarget::HLI => self.bus.read_byte(self.registers.get_hl()),
+                    SubByteTarget::D8 => todo!(),
                 };
 
                 let new_val = self.sub(val);
