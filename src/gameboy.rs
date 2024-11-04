@@ -1,13 +1,14 @@
-use crate::cpu::CPU;
+use crate::{cpu::CPU, display::GbDisplay};
 
 pub struct Gameboy {
     //TODO: set as private once proper control is implemented
     pub cpu: CPU,
+    pub display: GbDisplay,
 }
 
 impl Gameboy {
     pub fn new_and_empty() -> Self {
-        Self { cpu: CPU::new() }
+        Self { cpu: CPU::new(), display: GbDisplay::new() }
     }
 
     pub fn boot(&mut self) {

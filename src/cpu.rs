@@ -580,7 +580,7 @@ impl CPU {
                             LdByteAddress::A8 => (self.read_next_byte(), 2),
                         };
 
-                        let addr = 0xFF00 + addr_inc as u16;
+                        let addr = 0xFF00_u16 | (addr_inc as u16);
 
                         self.registers.a = self.bus.read_byte(addr);
 
@@ -599,7 +599,7 @@ impl CPU {
                             LdByteAddress::A8 => (self.read_next_byte(), 2),
                         };
 
-                        let addr = 0xFF00 + addr_inc as u16;
+                        let addr = 0xFF00 | (addr_inc as u16);
 
                         self.bus.write_byte(addr, self.registers.a);
 
