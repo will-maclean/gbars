@@ -43,6 +43,8 @@ pub enum LoadWordTarget {
 pub enum LoadWordSource {
     BC,
     D16,
+	HL,
+	SPPlusS8
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -82,6 +84,9 @@ pub enum LoadType {
 
     // Store the contents of register A into the memory location specified by register pair HL, and simultaneously decrement the contents of HL.
     AIntoHLDec,
+
+	HLIncIntoA,
+	HLDecIntoA,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -148,11 +153,50 @@ pub enum AdcTargetType {
 	D8,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum AndTargetType {
+	A,
+	B,
+	C,
+	D,
+	E,
+	H,
+	L,
+	HLI,
+	D8,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum XORTargetType {
+	A,
+	B,
+	C,
+	D,
+	E,
+	H,
+	L,
+	HLI,
+	D8,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ORTargetType {
+	A,
+	B,
+	C,
+	D,
+	E,
+	H,
+	L,
+	HLI,
+	D8,
+}
+
 #[derive(Debug)]
 pub enum Instruction {
 	ADC(AdcTargetType),
     ADD(AddTargetType),
-    AND(ArithmeticByteTarget),
+    AND(AndTargetType),
 
     // Bit
     BIT(BitPosition, BitRegister),
@@ -204,7 +248,7 @@ pub enum Instruction {
     // No-op
     NOP,
 
-    OR(ArithmeticByteTarget),
+    OR(ORTargetType),
 	
     // Pop
     POP(StackTarget),
@@ -217,6 +261,8 @@ pub enum Instruction {
 	
     // Return
     RET(JumpTest),
+
+	RETI,
 	
 	// Rotate left
 	// Rotate the contents of register ArithmeticByteTarget to the left. That is, the contents 
@@ -241,7 +287,7 @@ pub enum Instruction {
 	RST(BitPosition),
 	
 	// Subtract byte and carry
-	SBC(ArithmeticByteTarget),
+	SBC(SBCByteTarget),
     // Set Carry flag
     SCF,
 
@@ -259,7 +305,7 @@ pub enum Instruction {
 
 	SWAP(ArithmeticByteTarget),
 
-    XOR(ArithmeticByteTarget),
+    XOR(XORTargetType),
 }
 
 impl Instruction {
@@ -315,7 +361,7 @@ impl Instruction {
 			0x27 => Some(Instruction::DAA),
 			0x28 => Some(Instruction::JR(JumpTest::Zero)),
 			0x29 => Some(Instruction::ADD(AddTargetType::Word(ArithmeticWordTarget::HL))),
-			0x2A => None,
+			0x2A => Some(Instruction::LD(LoadType::HLIncIntoA)),
 			0x2B => Some(Instruction::DEC(ArithmeticTargetType::Word(ArithmeticWordTarget::HL))),
 			0x2C => Some(Instruction::INC(ArithmeticTargetType::Byte(ArithmeticByteTarget::L))),
 			0x2D => Some(Instruction::DEC(ArithmeticTargetType::Byte(ArithmeticByteTarget::L))),
@@ -331,7 +377,7 @@ impl Instruction {
             0x37 => Some(Instruction::SCF),
 			0x38 => Some(Instruction::JR(JumpTest::Carry)),
 			0x39 => Some(Instruction::ADD(AddTargetType::Word(ArithmeticWordTarget::SP))),
-			0x3A => None,
+			0x3A => Some(Instruction::LD(LoadType::HLDecIntoA)),
 			0x3B => Some(Instruction::DEC(ArithmeticTargetType::Word(ArithmeticWordTarget::SP))),
 			0x3C => Some(Instruction::INC(ArithmeticTargetType::Byte(ArithmeticByteTarget::A))),
 			0x3D => Some(Instruction::DEC(ArithmeticTargetType::Byte(ArithmeticByteTarget::A))),
@@ -425,38 +471,38 @@ impl Instruction {
             0x95 => Some(Instruction::SUB(SubByteTarget::L)),
             0x96 => Some(Instruction::SUB(SubByteTarget::HLI)),
             0x97 => Some(Instruction::SUB(SubByteTarget::A)),
-			0x98 => Some(Instruction::SBC(ArithmeticByteTarget::B)),
-            0x99 => Some(Instruction::SBC(ArithmeticByteTarget::C)),
-            0x9A => Some(Instruction::SBC(ArithmeticByteTarget::D)),
-            0x9B => Some(Instruction::SBC(ArithmeticByteTarget::E)),
-            0x9C => Some(Instruction::SBC(ArithmeticByteTarget::H)),
-            0x9D => Some(Instruction::SBC(ArithmeticByteTarget::L)),
-            0x9E => Some(Instruction::SBC(ArithmeticByteTarget::HLI)),
-            0x9F => Some(Instruction::SBC(ArithmeticByteTarget::A)),
-            0xA0 => Some(Instruction::AND(ArithmeticByteTarget::B)),
-            0xA1 => Some(Instruction::AND(ArithmeticByteTarget::C)),
-            0xA2 => Some(Instruction::AND(ArithmeticByteTarget::D)),
-            0xA3 => Some(Instruction::AND(ArithmeticByteTarget::E)),
-            0xA4 => Some(Instruction::AND(ArithmeticByteTarget::H)),
-            0xA5 => Some(Instruction::AND(ArithmeticByteTarget::L)),
-            0xA6 => Some(Instruction::AND(ArithmeticByteTarget::HLI)),
-            0xA7 => Some(Instruction::AND(ArithmeticByteTarget::A)),
-            0xA8 => Some(Instruction::XOR(ArithmeticByteTarget::B)),
-            0xA9 => Some(Instruction::XOR(ArithmeticByteTarget::C)),
-            0xAA => Some(Instruction::XOR(ArithmeticByteTarget::D)),
-            0xAB => Some(Instruction::XOR(ArithmeticByteTarget::E)),
-            0xAC => Some(Instruction::XOR(ArithmeticByteTarget::H)),
-            0xAD => Some(Instruction::XOR(ArithmeticByteTarget::L)),
-            0xAE => Some(Instruction::XOR(ArithmeticByteTarget::HLI)),
-            0xAF => Some(Instruction::XOR(ArithmeticByteTarget::A)),
-            0xB0 => Some(Instruction::OR(ArithmeticByteTarget::B)),
-            0xB1 => Some(Instruction::OR(ArithmeticByteTarget::C)),
-            0xB2 => Some(Instruction::OR(ArithmeticByteTarget::D)),
-            0xB3 => Some(Instruction::OR(ArithmeticByteTarget::E)),
-            0xB4 => Some(Instruction::OR(ArithmeticByteTarget::H)),
-            0xB5 => Some(Instruction::OR(ArithmeticByteTarget::L)),
-            0xB6 => Some(Instruction::OR(ArithmeticByteTarget::HLI)),
-            0xB7 => Some(Instruction::OR(ArithmeticByteTarget::A)),
+			0x98 => Some(Instruction::SBC(SBCByteTarget::B)),
+            0x99 => Some(Instruction::SBC(SBCByteTarget::C)),
+            0x9A => Some(Instruction::SBC(SBCByteTarget::D)),
+            0x9B => Some(Instruction::SBC(SBCByteTarget::E)),
+            0x9C => Some(Instruction::SBC(SBCByteTarget::H)),
+            0x9D => Some(Instruction::SBC(SBCByteTarget::L)),
+            0x9E => Some(Instruction::SBC(SBCByteTarget::HLI)),
+            0x9F => Some(Instruction::SBC(SBCByteTarget::A)),
+            0xA0 => Some(Instruction::AND(AndTargetType::B)),
+            0xA1 => Some(Instruction::AND(AndTargetType::C)),
+            0xA2 => Some(Instruction::AND(AndTargetType::D)),
+            0xA3 => Some(Instruction::AND(AndTargetType::E)),
+            0xA4 => Some(Instruction::AND(AndTargetType::H)),
+            0xA5 => Some(Instruction::AND(AndTargetType::L)),
+            0xA6 => Some(Instruction::AND(AndTargetType::HLI)),
+            0xA7 => Some(Instruction::AND(AndTargetType::A)),
+            0xA8 => Some(Instruction::XOR(XORTargetType::B)),
+            0xA9 => Some(Instruction::XOR(XORTargetType::C)),
+            0xAA => Some(Instruction::XOR(XORTargetType::D)),
+            0xAB => Some(Instruction::XOR(XORTargetType::E)),
+            0xAC => Some(Instruction::XOR(XORTargetType::H)),
+            0xAD => Some(Instruction::XOR(XORTargetType::L)),
+            0xAE => Some(Instruction::XOR(XORTargetType::HLI)),
+            0xAF => Some(Instruction::XOR(XORTargetType::A)),
+            0xB0 => Some(Instruction::OR(ORTargetType::B)),
+            0xB1 => Some(Instruction::OR(ORTargetType::C)),
+            0xB2 => Some(Instruction::OR(ORTargetType::D)),
+            0xB3 => Some(Instruction::OR(ORTargetType::E)),
+            0xB4 => Some(Instruction::OR(ORTargetType::H)),
+            0xB5 => Some(Instruction::OR(ORTargetType::L)),
+            0xB6 => Some(Instruction::OR(ORTargetType::HLI)),
+            0xB7 => Some(Instruction::OR(ORTargetType::A)),
 			0xB8 => Some(Instruction::CP(CPByteTarget::B)),
             0xB9 => Some(Instruction::CP(CPByteTarget::C)),
             0xBA => Some(Instruction::CP(CPByteTarget::D)),
@@ -490,12 +536,12 @@ impl Instruction {
 			0xD6 => Some(Instruction::SUB(SubByteTarget::D8)),
 			0xD7 => Some(Instruction::RST(BitPosition::Two)),
 			0xD8 => Some(Instruction::RET(JumpTest::Carry)),
-			0xD9 => None,
+			0xD9 => Some(Instruction::RETI),
 			0xDA => Some(Instruction::JP(JumpTest::Carry, JpAddrLoc::A16)),
 			0xDB => None,
 			0xDC => Some(Instruction::CALL(JumpTest::Carry)),
 			0xDD => None,
-			0xDE => None,
+			0xDE => Some(Instruction::SBC(SBCByteTarget::D8)),
 			0xDF => Some(Instruction::RST(BitPosition::Three)),
             0xE0 => Some(Instruction::LD(LoadType::ByteAddressFromA(LdByteAddress::A8))),
 			0xE1 => Some(Instruction::POP(StackTarget::HL)),
@@ -503,7 +549,7 @@ impl Instruction {
 			0xE3 => None,
 			0xE4 => None,
 			0xE5 => Some(Instruction::PUSH(StackTarget::HL)),
-			0xE6 => None,
+			0xE6 => Some(Instruction::AND(AndTargetType::D8)),
 			0xE7 => Some(Instruction::RST(BitPosition::Four)),
 			0xE8 => Some(Instruction::ADD(AddTargetType::SPS8)),
 			0xE9 => Some(Instruction::JP(JumpTest::Always, JpAddrLoc::HL)),
@@ -511,18 +557,18 @@ impl Instruction {
 			0xEB => None,
 			0xEC => None,
 			0xED => None,
-			0xEE => None,
+			0xEE => Some(Instruction::XOR(XORTargetType::D8)),
 			0xEF => Some(Instruction::RST(BitPosition::Five)),
 			0xF0 => Some(Instruction::LD(LoadType::AFromByteAddress(LdByteAddress::A8))),
 			0xF1 => Some(Instruction::POP(StackTarget::AF)),
 			0xF2 => Some(Instruction::LD(LoadType::AFromByteAddress(LdByteAddress::C))),
-			0xF3 => None,
+			0xF3 => Some(Instruction::EI),
 			0xF4 => None,
 			0xF5 => Some(Instruction::PUSH(StackTarget::AF)),
-			0xF6 => None,
+			0xF6 => Some(Instruction::OR(ORTargetType::D8)),
 			0xF7 => Some(Instruction::RST(BitPosition::Six)),
-			0xF8 => None,
-			0xF9 => None,
+			0xF8 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::HL, LoadWordSource::SPPlusS8))),
+			0xF9 => Some(Instruction::LD(LoadType::Word(LoadWordTarget::SP, LoadWordSource::HL))),
 			0xFA => Some(Instruction::LD(LoadType::AFromIndirect(LdIndirectAddr::A16))),
 			0xFB => Some(Instruction::EI),
 			0xFC => None,
@@ -804,6 +850,19 @@ pub enum ArithmeticByteTarget {
     H,
     L,
     HLI,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum SBCByteTarget {
+    A,
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
+    HLI,
+	D8
 }
 
 #[derive(Debug, Copy, Clone)]

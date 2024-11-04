@@ -11,7 +11,7 @@ fn main() {
     gb.load_cartridge("resources/Pokemon Red (UE) [S][!].gb");
     gb.boot();
 
-    for _ in 0..200000 {
+    for _ in 0..5000 {
         gb.cpu.step();
     }
     println!("Done.");
