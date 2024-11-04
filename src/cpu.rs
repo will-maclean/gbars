@@ -577,7 +577,7 @@ impl CPU {
                     LoadType::AFromByteAddress(ld_byte_address) => {
                         let (addr_inc, pc_inc) = match ld_byte_address {
                             LdByteAddress::C => (self.registers.c, 2),
-                            LdByteAddress::A8 => (self.read_next_byte(), 3),
+                            LdByteAddress::A8 => (self.read_next_byte(), 2),
                         };
 
                         let addr = 0xFF00 + addr_inc as u16;
