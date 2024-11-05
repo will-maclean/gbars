@@ -3,6 +3,15 @@
 use ggez::{event, graphics, Context, GameResult};
 use std::{env, path};
 
+use gameboy::Gameboy;
+
+pub mod cpu;
+pub mod gameboy;
+pub mod instructions;
+pub mod registers;
+pub mod memory;
+pub mod display;
+
 // First we make a structure to contain the game's state
 struct MainState {
     frames: usize,
@@ -64,6 +73,14 @@ impl event::EventHandler<ggez::GameError> for MainState {
 // do the work of creating our MainState and running our game.
 // * Then, just call `game.run()` which runs the `Game` mainloop.
 pub fn main() -> GameResult {
+    let mut gb = Gameboy::new_and_empty();
+    gb.load_cartridge("resources/Pokemon Red (UE) [S][!].gb");
+    gb.boot();
+
+    for _ in 0..10000 {
+        gb.cpu.step();
+    }
+
     // We add the CARGO_MANIFEST_DIR/resources to the resource paths
     // so that ggez will look in our cargo project directory for files.
     let resource_dir = if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
@@ -80,26 +97,3 @@ pub fn main() -> GameResult {
     let state = MainState::new(&mut ctx)?;
     event::run(ctx, event_loop, state)
 }
-
-
-// use gameboy::Gameboy;
-
-// pub mod cpu;
-// pub mod gameboy;
-// pub mod instructions;
-// pub mod registers;
-// pub mod memory;
-// pub mod display;
-
-// fn main() {
-//     let mut gb = Gameboy::new_and_empty();
-//     gb.load_cartridge("resources/Pokemon Red (UE) [S][!].gb");
-//     gb.boot();
-
-//     for _ in 0..10000 {
-//         gb.cpu.step();
-//     }
-//     println!("Done.");
-
-//     // println!("{}", 0xf5_u8 as i8)
-// }
