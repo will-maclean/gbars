@@ -82,6 +82,14 @@ impl CPU {
         true
     }
 
+    pub fn read_byte(&mut self, address: usize) -> u8{
+        self.bus.read_byte(address as u16)
+    }
+
+    pub fn write_byte(&mut self, address: usize, value: u8) {
+        self.bus.write_byte(address as u16, value);
+    }
+
     fn execute(&mut self, instruction: Instruction) -> u16 {
         if self.is_halted {
             return self.pc;
