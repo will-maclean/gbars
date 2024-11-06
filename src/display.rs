@@ -11,4 +11,8 @@ impl GbDisplay {
     pub fn start(&mut self) {
 
     }
+
+    pub fn render(&mut self) {
+
+    }
 }

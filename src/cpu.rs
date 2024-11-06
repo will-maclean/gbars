@@ -23,7 +23,7 @@ impl CPU {
             sp: 0xFFFF,
             bus: MemoryBus::new_and_load_bios(),
             is_halted: false,
-            debug_view: true,
+            debug_view: false,
             instruction_counter: 0,
         }
     }
@@ -47,7 +47,7 @@ impl CPU {
         self.bus.load_cartridge(path);
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> bool{
         if !self.bus.boot_mode_active() {
             panic!("ROM finished")
         }
@@ -78,6 +78,8 @@ impl CPU {
         };
 
         self.instruction_counter += 1;
+
+        true
     }
 
     fn execute(&mut self, instruction: Instruction) -> u16 {
