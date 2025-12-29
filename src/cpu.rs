@@ -1,4 +1,12 @@
-use crate::instructions::{AdcTargetType, AddByteTarget, AddTargetType, AndTargetType, ArithmeticByteTarget, ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc, JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType, LoadWordSource, LoadWordTarget, ORTargetType, SBCByteTarget, StackTarget, SubByteTarget, XORTargetType};
+use std::ops::{Shl, Shr};
+
+use crate::instructions::{
+    AdcTargetType, AddByteTarget, AddTargetType, AndTargetType, ArithmeticByteTarget,
+    ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc,
+    JumpTest, LdByteAddress, LdIndirectAddr, LoadByteSource, LoadByteTarget, LoadType,
+    LoadWordSource, LoadWordTarget, ORTargetType, SBCByteTarget, StackTarget, SubByteTarget,
+    XORTargetType,
+};
 use crate::memory::MemoryBus;
 use crate::registers::Registers;
 
@@ -16,14 +24,14 @@ pub struct CPU {
 }
 
 impl CPU {
-    pub fn new() -> Self {
+    pub fn new(debug: bool) -> Self {
         Self {
             registers: Default::default(),
             pc: 0,
             sp: 0xFFFF,
             bus: MemoryBus::new_and_load_bios(),
             is_halted: false,
-            debug_view: false,
+            debug_view: debug,
             instruction_counter: 0,
         }
     }
@@ -47,7 +55,7 @@ impl CPU {
         self.bus.load_cartridge(path);
     }
 
-    pub fn step(&mut self) -> bool{
+    pub fn step(&mut self) -> bool {
         if !self.bus.boot_mode_active() {
             panic!("ROM finished")
         }
@@ -82,7 +90,7 @@ impl CPU {
         true
     }
 
-    pub fn read_byte(&mut self, address: usize) -> u8{
+    pub fn read_byte(&mut self, address: usize) -> u8 {
         self.bus.read_byte(address as u16)
     }
 
@@ -113,7 +121,6 @@ impl CPU {
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::ADD(arithmetic_type) => match arithmetic_type {
                 AddTargetType::Byte(target) => match target {
                     AddByteTarget::A => {
@@ -170,7 +177,7 @@ impl CPU {
                         self.registers.a = new_value;
 
                         self.pc.wrapping_add(2)
-                    },
+                    }
                 },
                 AddTargetType::Word(target) => {
                     let value = match target {
@@ -196,9 +203,8 @@ impl CPU {
                     self.registers.f.half_carry = (new_value & 0xF) + (new_value & 0xF) > 0xF;
 
                     self.pc.wrapping_add(2)
-                },
+                }
             },
-
             Instruction::AND(target) => match target {
                 AndTargetType::A => {
                     self.registers.a = self.and(self.registers.a);
@@ -236,9 +242,8 @@ impl CPU {
                     let d8 = self.read_next_byte();
                     self.registers.a = self.and(d8);
                     self.pc.wrapping_add(2)
-                },
+                }
             },
-
             Instruction::BIT(position, register) => {
                 let and_val: u8 = match position {
                     BitPosition::Zero => 1,
@@ -269,63 +274,46 @@ impl CPU {
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::CALL(test) => {
                 let should_jump = self.jmp_test(test);
                 let new_pc = self.call(should_jump);
 
                 if self.debug_view {
-                    println!("CALL. test={:?},res={},curr_pc=0x{:x},new_pc=0x{:x}", test, should_jump, self.pc,new_pc);
+                    println!(
+                        "CALL. test={:?},res={},curr_pc=0x{:x},new_pc=0x{:x}",
+                        test, should_jump, self.pc, new_pc
+                    );
                 }
 
                 new_pc
-            },
-
+            }
             Instruction::CCF => {
                 self.registers.f.carry = !self.registers.f.carry;
                 self.registers.f.subtraction = false;
                 self.registers.f.half_carry = false;
 
                 self.pc.wrapping_add(1)
-            },
-
+            }
             Instruction::CP(target) => {
                 let (value, pc_inc) = match target {
-                    crate::instructions::CPByteTarget::A => {
-                        (self.registers.a, 1)
-                    },
-                    crate::instructions::CPByteTarget::B => {
-                        (self.registers.b, 1)
-                    },
-                    crate::instructions::CPByteTarget::C => {
-                        (self.registers.c, 1)
-                    },
-                    crate::instructions::CPByteTarget::D => {
-                        (self.registers.d, 1)
-                    },
-                    crate::instructions::CPByteTarget::E => {
-                        (self.registers.e, 1)
-                    },
-                    crate::instructions::CPByteTarget::H => {
-                        (self.registers.h, 1)
-                    },
-                    crate::instructions::CPByteTarget::L => {
-                        (self.registers.l, 1)
-                    },
+                    crate::instructions::CPByteTarget::A => (self.registers.a, 1),
+                    crate::instructions::CPByteTarget::B => (self.registers.b, 1),
+                    crate::instructions::CPByteTarget::C => (self.registers.c, 1),
+                    crate::instructions::CPByteTarget::D => (self.registers.d, 1),
+                    crate::instructions::CPByteTarget::E => (self.registers.e, 1),
+                    crate::instructions::CPByteTarget::H => (self.registers.h, 1),
+                    crate::instructions::CPByteTarget::L => (self.registers.l, 1),
                     crate::instructions::CPByteTarget::HLI => {
                         (self.bus.read_byte(self.registers.get_hl()), 1)
-                    },
-                    crate::instructions::CPByteTarget::D8 => {
-                        (self.read_next_byte(), 2)
-                    },
+                    }
+                    crate::instructions::CPByteTarget::D8 => (self.read_next_byte(), 2),
                 };
 
                 // we don't actually care about the result, so we can discard it
                 self.sub(value);
 
                 self.pc.wrapping_add(pc_inc)
-            },
-
+            }
             Instruction::CPL => {
                 self.registers.a = !self.registers.a;
 
@@ -333,7 +321,7 @@ impl CPU {
                 self.registers.f.subtraction = true;
 
                 self.pc.wrapping_add(1)
-            },
+            }
             Instruction::DEC(inc_type) => match inc_type {
                 ArithmeticTargetType::Word(target) => {
                     let val = match target {
@@ -385,7 +373,7 @@ impl CPU {
                             self.bus.write_byte(self.registers.get_hl(), new_value);
 
                             3
-                        },
+                        }
                     };
 
                     self.pc.wrapping_add(pc_inc)
@@ -395,67 +383,70 @@ impl CPU {
                 self.is_halted = true;
                 self.pc.wrapping_add(1)
             }
+            Instruction::INC(inc_type) => match inc_type {
+                ArithmeticTargetType::Word(target) => {
+                    match target {
+                        ArithmeticWordTarget::BC => self
+                            .registers
+                            .set_bc(self.registers.get_bc().wrapping_add(1)),
+                        ArithmeticWordTarget::DE => self
+                            .registers
+                            .set_de(self.registers.get_de().wrapping_add(1)),
+                        ArithmeticWordTarget::HL => self
+                            .registers
+                            .set_hl(self.registers.get_hl().wrapping_add(1)),
+                        ArithmeticWordTarget::SP => self.sp = self.sp.wrapping_add(1),
+                    };
 
-            Instruction::INC(inc_type) => {
-                match inc_type {
-                    ArithmeticTargetType::Word(target) => {
-                        match target {
-                            ArithmeticWordTarget::BC => self.registers.set_bc(self.registers.get_bc().wrapping_add(1)),
-                            ArithmeticWordTarget::DE => self.registers.set_de(self.registers.get_de().wrapping_add(1)),
-                            ArithmeticWordTarget::HL => self.registers.set_hl(self.registers.get_hl().wrapping_add(1)),
-                            ArithmeticWordTarget::SP => self.sp = self.sp.wrapping_add(1),
-                        };
+                    if self.debug_view {
+                        println!("INC (word) target=({:?})", target)
+                    };
 
-                        if self.debug_view {
-                            println!("INC (word) target=({:?})", target)
-                        };
-
-                        self.pc.wrapping_add(1)
-                    }
-                    ArithmeticTargetType::Byte(arithmetic_byte_target) => {
-                        let pc_inc = match arithmetic_byte_target {
-                            ArithmeticByteTarget::A => {
-                                self.registers.a = self.inc_byte(self.registers.a);
-                                1
-                            }
-                            ArithmeticByteTarget::B => {
-                                self.registers.b = self.inc_byte(self.registers.b);
-                                1
-                            }
-                            ArithmeticByteTarget::C => {
-                                self.registers.c = self.inc_byte(self.registers.c);
-                                1
-                            }
-                            ArithmeticByteTarget::D => {
-                                self.registers.d = self.inc_byte(self.registers.d);
-                                1
-                            }
-                            ArithmeticByteTarget::E => {
-                                self.registers.e = self.inc_byte(self.registers.e);
-                                1
-                            }
-                            ArithmeticByteTarget::H => {
-                                self.registers.h = self.inc_byte(self.registers.h);
-                                1
-                            }
-                            ArithmeticByteTarget::L => {
-                                self.registers.l = self.inc_byte(self.registers.l);
-                                1
-                            }
-                            ArithmeticByteTarget::HLI =>{
-                                let addr = self.registers.get_hl();
-                                let value = self.bus.read_byte(addr);
-                                let new_value = self.inc_byte(value);
-                                self.bus.write_byte(self.registers.get_hl(), new_value);
-
-                                3
-                            }
-                        };
-
-                        self.pc.wrapping_add(pc_inc)
-                    }
+                    self.pc.wrapping_add(1)
                 }
-            }
+                ArithmeticTargetType::Byte(arithmetic_byte_target) => {
+                    let pc_inc = match arithmetic_byte_target {
+                        ArithmeticByteTarget::A => {
+                            self.registers.a = self.inc_byte(self.registers.a);
+                            1
+                        }
+                        ArithmeticByteTarget::B => {
+                            self.registers.b = self.inc_byte(self.registers.b);
+                            1
+                        }
+                        ArithmeticByteTarget::C => {
+                            self.registers.c = self.inc_byte(self.registers.c);
+                            1
+                        }
+                        ArithmeticByteTarget::D => {
+                            self.registers.d = self.inc_byte(self.registers.d);
+                            1
+                        }
+                        ArithmeticByteTarget::E => {
+                            self.registers.e = self.inc_byte(self.registers.e);
+                            1
+                        }
+                        ArithmeticByteTarget::H => {
+                            self.registers.h = self.inc_byte(self.registers.h);
+                            1
+                        }
+                        ArithmeticByteTarget::L => {
+                            self.registers.l = self.inc_byte(self.registers.l);
+                            1
+                        }
+                        ArithmeticByteTarget::HLI => {
+                            let addr = self.registers.get_hl();
+                            let value = self.bus.read_byte(addr);
+                            let new_value = self.inc_byte(value);
+                            self.bus.write_byte(self.registers.get_hl(), new_value);
+
+                            3
+                        }
+                    };
+
+                    self.pc.wrapping_add(pc_inc)
+                }
+            },
             Instruction::JP(test, target) => {
                 let jump_condition = self.jmp_test(test);
 
@@ -464,9 +455,8 @@ impl CPU {
                     JpAddrLoc::HL => self.registers.get_hl(),
                 }
             }
-
             Instruction::JR(test) => {
-                if self.jmp_test(test.clone()){
+                if self.jmp_test(test.clone()) {
                     let offset = (self.read_next_byte() as i8).wrapping_add(2).into();
                     let new_pc = self.pc.wrapping_add_signed(offset);
 
@@ -483,207 +473,200 @@ impl CPU {
                     self.pc.wrapping_add(2)
                 }
             }
+            Instruction::LD(load_type) => match load_type {
+                LoadType::Byte(target, source) => {
+                    let source_value = match source {
+                        LoadByteSource::A => self.registers.a,
+                        LoadByteSource::D8 => self.read_next_byte(),
+                        LoadByteSource::HLI => self.bus.read_byte(self.registers.get_hl()),
+                        LoadByteSource::B => self.registers.b,
+                        LoadByteSource::C => self.registers.c,
+                        LoadByteSource::D => self.registers.d,
+                        LoadByteSource::E => self.registers.e,
+                        LoadByteSource::H => self.registers.h,
+                        LoadByteSource::L => self.registers.l,
+                    };
 
-            Instruction::LD(load_type) => {
-                match load_type {
-                    LoadType::Byte(target, source) => {
-                        let source_value = match source {
-                            LoadByteSource::A => self.registers.a,
-                            LoadByteSource::D8 => self.read_next_byte(),
-                            LoadByteSource::HLI => self.bus.read_byte(self.registers.get_hl()),
-                            LoadByteSource::B => self.registers.b,
-                            LoadByteSource::C => self.registers.c,
-                            LoadByteSource::D => self.registers.d,
-                            LoadByteSource::E => self.registers.e,
-                            LoadByteSource::H => self.registers.h,
-                            LoadByteSource::L => self.registers.l,
-                        };
-
-                        match target {
-                            LoadByteTarget::A => self.registers.a = source_value,
-                            LoadByteTarget::HLI => {
-                                self.bus.write_byte(self.registers.get_hl(), source_value)
-                            }
-                            LoadByteTarget::B => self.registers.b = source_value,
-                            LoadByteTarget::C => self.registers.c = source_value,
-                            LoadByteTarget::D => self.registers.d = source_value,
-                            LoadByteTarget::E => self.registers.e = source_value,
-                            LoadByteTarget::H => self.registers.h = source_value,
-                            LoadByteTarget::L => self.registers.l = source_value,
+                    match target {
+                        LoadByteTarget::A => self.registers.a = source_value,
+                        LoadByteTarget::HLI => {
+                            self.bus.write_byte(self.registers.get_hl(), source_value)
                         }
-
-                        if self.debug_view {
-                            println!(
-                                "LD (byte). From source={:?},value=0x{:x} to target={:?}",
-                                source, source_value, target
-                            );
-                        }
-
-                        match source {
-                            LoadByteSource::D8 => self.pc.wrapping_add(2),
-                            _ => self.pc.wrapping_add(1),
-                        }
+                        LoadByteTarget::B => self.registers.b = source_value,
+                        LoadByteTarget::C => self.registers.c = source_value,
+                        LoadByteTarget::D => self.registers.d = source_value,
+                        LoadByteTarget::E => self.registers.e = source_value,
+                        LoadByteTarget::H => self.registers.h = source_value,
+                        LoadByteTarget::L => self.registers.l = source_value,
                     }
-                    LoadType::Word(load_word_target, load_word_source) => {
-                        let source_value = match load_word_source {
-                            LoadWordSource::BC => self.registers.get_bc(),
-                            LoadWordSource::D16 => self.read_next_word(),
-                            LoadWordSource::HL => self.registers.get_hl(),
-                            LoadWordSource::SPPlusS8 => {
-                                let s8 = self.read_next_byte() as i8;
-                                self.sp.wrapping_add_signed(s8.into())
-                            },
-                        };
 
-                        match load_word_target {
-                            LoadWordTarget::BC => self.registers.set_bc(source_value),
-                            LoadWordTarget::SP => self.sp = source_value,
-                            LoadWordTarget::HL => self.registers.set_hl(source_value),
-                            LoadWordTarget::DE => self.registers.set_de(source_value),
-                        };
-
-                        if self.debug_view {
-                            println!(
-                                "LD (word). From source={:?},value=0x{:x} to target={:?}",
-                                load_word_source, source_value, load_word_target
-                            );
-                        }
-
-                        let pc_inc = match (load_word_target, load_word_source) {
-                            (LoadWordTarget::HL, LoadWordSource::SPPlusS8) => 2,
-                            (LoadWordTarget::SP, LoadWordSource::HL) => 1,
-                            _ => 3,
-                        };
-                        self.pc.wrapping_add(pc_inc)
+                    if self.debug_view {
+                        println!(
+                            "LD (byte). From source={:?},value=0x{:x} to target={:?}",
+                            source, source_value, target
+                        );
                     }
-                    LoadType::AIntoHLInc => {
-                        let write_addr = self.registers.get_hl();
-                        self.bus.write_byte(write_addr, self.registers.a);
-                        self.registers.set_hl(write_addr.wrapping_add(1));
 
-                        if self.debug_view {
-                            println!(
-                                "LD (AIntoHLInc). From source=A,value=0x{:x} to address=0x{:x}",
-                                self.registers.a, write_addr
-                            );
-                        }
-
-                        self.pc.wrapping_add(1)
+                    match source {
+                        LoadByteSource::D8 => self.pc.wrapping_add(2),
+                        _ => self.pc.wrapping_add(1),
                     }
-                    LoadType::AIntoHLDec => {
-                        let write_addr = self.registers.get_hl();
-                        self.bus.write_byte(write_addr, self.registers.a);
-                        self.registers.set_hl(write_addr.wrapping_sub(1));
-
-                        if self.debug_view {
-                            println!(
-                                "LD (AIntoHLDec). From source=A,value=0x{:x} to address=0x{:x}",
-                                self.registers.a, write_addr
-                            );
-                        }
-
-                        self.pc.wrapping_add(1)
-                    }
-                    LoadType::AFromByteAddress(ld_byte_address) => {
-                        let (addr_inc, pc_inc) = match ld_byte_address {
-                            LdByteAddress::C => (self.registers.c, 2),
-                            LdByteAddress::A8 => (self.read_next_byte(), 2),
-                        };
-
-                        let addr = 0xFF00_u16 | (addr_inc as u16);
-
-                        self.registers.a = self.bus.read_byte(addr);
-
-                        if self.debug_view {
-                            println!(
-                                "LD (AFromByteAddress). From source=({:?}),value=0x{:x} to address=A",
-                                ld_byte_address, self.bus.read_byte(addr)
-                            );
-                        }
-
-                        self.pc.wrapping_add(pc_inc)
-                    },
-                    LoadType::ByteAddressFromA(ld_byte_address) => {
-                        let (addr_inc, pc_inc) = match ld_byte_address {
-                            LdByteAddress::C => (self.registers.c, 1),
-                            LdByteAddress::A8 => (self.read_next_byte(), 2),
-                        };
-
-                        let addr = 0xFF00 | (addr_inc as u16);
-
-                        self.bus.write_byte(addr, self.registers.a);
-
-                        if self.debug_view {
-                            println!(
-                                "LD (ByteAddressFromA). From source=A,value=0x{:x} to address=0x{:x}",
-                                self.registers.a, addr
-                            );
-                        }
-
-                        self.pc.wrapping_add(pc_inc)
-                    },
-                    LoadType::AFromIndirect(addr_source) => {
-                        let (addr, pc_inc) = match addr_source {
-                            LdIndirectAddr::BC => {
-                                (self.registers.get_bc(), 1)
-                            },
-                            LdIndirectAddr::DE => {
-                                (self.registers.get_de(), 1)
-                            },
-                            LdIndirectAddr::A16 => {
-                                (self.read_next_word(), 3)
-                            },
-                        };
-                        
-                        self.registers.a = self.bus.read_byte(addr);
-
-                        if self.debug_view {
-                            println!(
-                                "LD (AFromIndirect). From source={:?},memory=0x{:x},value=0x{:x} to A",
-                                addr_source, addr, self.registers.a
-                            );
-                        }
-
-                        self.pc.wrapping_add(pc_inc)
-                    },
-                    LoadType::IndirectFromA(addr_target) => {
-                        let addr = self.read_next_word();
-                        self.bus.write_byte(addr, self.registers.a);
-
-                        let pc_inc = match addr_target {
-                            LdIndirectAddr::BC => {
-                                self.bus.write_byte(self.registers.get_bc(), self.registers.a);
-
-                                1
-                            },
-                            LdIndirectAddr::DE => {
-                                self.bus.write_byte(self.registers.get_de(), self.registers.a);
-
-                                1
-                            },
-                            LdIndirectAddr::A16 => {
-                                let write_addr = self.read_next_word();
-                                self.bus.write_byte(write_addr, self.registers.a);
-
-                                3
-                            },
-                        };
-
-                        if self.debug_view {
-                            println!(
-                                "LD (IndirectFromA). From source=A,value=0x{:x} to address=0x{:x}",
-                                self.registers.a, addr
-                            );
-                        }
-                        
-                        self.pc.wrapping_add(pc_inc)
-                    },
-                    LoadType::HLIncIntoA => todo!(),
-                    LoadType::HLDecIntoA => todo!(),
                 }
-            }
-            Instruction::NOP => self.pc.wrapping_add(1),
+                LoadType::Word(load_word_target, load_word_source) => {
+                    let source_value = match load_word_source {
+                        LoadWordSource::BC => self.registers.get_bc(),
+                        LoadWordSource::D16 => self.read_next_word(),
+                        LoadWordSource::HL => self.registers.get_hl(),
+                        LoadWordSource::SPPlusS8 => {
+                            let s8 = self.read_next_byte() as i8;
+                            self.sp.wrapping_add_signed(s8.into())
+                        }
+                    };
 
+                    match load_word_target {
+                        LoadWordTarget::BC => self.registers.set_bc(source_value),
+                        LoadWordTarget::SP => self.sp = source_value,
+                        LoadWordTarget::HL => self.registers.set_hl(source_value),
+                        LoadWordTarget::DE => self.registers.set_de(source_value),
+                    };
+
+                    if self.debug_view {
+                        println!(
+                            "LD (word). From source={:?},value=0x{:x} to target={:?}",
+                            load_word_source, source_value, load_word_target
+                        );
+                    }
+
+                    let pc_inc = match (load_word_target, load_word_source) {
+                        (LoadWordTarget::HL, LoadWordSource::SPPlusS8) => 2,
+                        (LoadWordTarget::SP, LoadWordSource::HL) => 1,
+                        _ => 3,
+                    };
+                    self.pc.wrapping_add(pc_inc)
+                }
+                LoadType::AIntoHLInc => {
+                    let write_addr = self.registers.get_hl();
+                    self.bus.write_byte(write_addr, self.registers.a);
+                    self.registers.set_hl(write_addr.wrapping_add(1));
+
+                    if self.debug_view {
+                        println!(
+                            "LD (AIntoHLInc). From source=A,value=0x{:x} to address=0x{:x}",
+                            self.registers.a, write_addr
+                        );
+                    }
+
+                    self.pc.wrapping_add(1)
+                }
+                LoadType::AIntoHLDec => {
+                    let write_addr = self.registers.get_hl();
+                    self.bus.write_byte(write_addr, self.registers.a);
+                    self.registers.set_hl(write_addr.wrapping_sub(1));
+
+                    if self.debug_view {
+                        println!(
+                            "LD (AIntoHLDec). From source=A,value=0x{:x} to address=0x{:x}",
+                            self.registers.a, write_addr
+                        );
+                    }
+
+                    self.pc.wrapping_add(1)
+                }
+                LoadType::AFromByteAddress(ld_byte_address) => {
+                    let (addr_inc, pc_inc) = match ld_byte_address {
+                        LdByteAddress::C => (self.registers.c, 2),
+                        LdByteAddress::A8 => (self.read_next_byte(), 2),
+                    };
+
+                    let addr = 0xFF00_u16 | (addr_inc as u16);
+
+                    self.registers.a = self.bus.read_byte(addr);
+
+                    if self.debug_view {
+                        println!(
+                            "LD (AFromByteAddress). From source=({:?}),value=0x{:x} to address=A",
+                            ld_byte_address,
+                            self.bus.read_byte(addr)
+                        );
+                    }
+
+                    self.pc.wrapping_add(pc_inc)
+                }
+                LoadType::ByteAddressFromA(ld_byte_address) => {
+                    let (addr_inc, pc_inc) = match ld_byte_address {
+                        LdByteAddress::C => (self.registers.c, 1),
+                        LdByteAddress::A8 => (self.read_next_byte(), 2),
+                    };
+
+                    let addr = 0xFF00 | (addr_inc as u16);
+
+                    self.bus.write_byte(addr, self.registers.a);
+
+                    if self.debug_view {
+                        println!(
+                            "LD (ByteAddressFromA). From source=A,value=0x{:x} to address=0x{:x}",
+                            self.registers.a, addr
+                        );
+                    }
+
+                    self.pc.wrapping_add(pc_inc)
+                }
+                LoadType::AFromIndirect(addr_source) => {
+                    let (addr, pc_inc) = match addr_source {
+                        LdIndirectAddr::BC => (self.registers.get_bc(), 1),
+                        LdIndirectAddr::DE => (self.registers.get_de(), 1),
+                        LdIndirectAddr::A16 => (self.read_next_word(), 3),
+                    };
+
+                    self.registers.a = self.bus.read_byte(addr);
+
+                    if self.debug_view {
+                        println!(
+                            "LD (AFromIndirect). From source={:?},memory=0x{:x},value=0x{:x} to A",
+                            addr_source, addr, self.registers.a
+                        );
+                    }
+
+                    self.pc.wrapping_add(pc_inc)
+                }
+                LoadType::IndirectFromA(addr_target) => {
+                    let addr = self.read_next_word();
+                    self.bus.write_byte(addr, self.registers.a);
+
+                    let pc_inc = match addr_target {
+                        LdIndirectAddr::BC => {
+                            self.bus
+                                .write_byte(self.registers.get_bc(), self.registers.a);
+
+                            1
+                        }
+                        LdIndirectAddr::DE => {
+                            self.bus
+                                .write_byte(self.registers.get_de(), self.registers.a);
+
+                            1
+                        }
+                        LdIndirectAddr::A16 => {
+                            let write_addr = self.read_next_word();
+                            self.bus.write_byte(write_addr, self.registers.a);
+
+                            3
+                        }
+                    };
+
+                    if self.debug_view {
+                        println!(
+                            "LD (IndirectFromA). From source=A,value=0x{:x} to address=0x{:x}",
+                            self.registers.a, addr
+                        );
+                    }
+
+                    self.pc.wrapping_add(pc_inc)
+                }
+                LoadType::HLIncIntoA => todo!(),
+                LoadType::HLDecIntoA => todo!(),
+            },
+            Instruction::NOP => self.pc.wrapping_add(1),
             Instruction::OR(target) => match target {
                 ORTargetType::A => {
                     self.registers.a = self.or(self.registers.a);
@@ -722,9 +705,8 @@ impl CPU {
                     self.registers.a = self.or(d8);
 
                     self.pc.wrapping_add(2)
-                },
+                }
             },
-
             Instruction::POP(target) => {
                 let result = self.pop();
                 match target {
@@ -735,7 +717,6 @@ impl CPU {
                 };
                 self.pc.wrapping_add(1)
             }
-
             Instruction::PUSH(target) => {
                 let value = match target {
                     StackTarget::BC => self.registers.get_bc(),
@@ -747,12 +728,14 @@ impl CPU {
                 self.push(value);
 
                 if self.debug_view {
-                    println!("PUSH. target={:?},value=0x{:x} (sp=0x{:x})", target, value, self.sp);
+                    println!(
+                        "PUSH. target={:?},value=0x{:x} (sp=0x{:x})",
+                        target, value, self.sp
+                    );
                 }
 
                 self.pc.wrapping_add(1)
             }
-
             Instruction::RES(pos, register) => {
                 let and_val = match pos {
                     BitPosition::Zero => 1,
@@ -769,50 +752,50 @@ impl CPU {
                     BitRegister::B => {
                         self.registers.b = !and_val & self.registers.b;
                         2
-                    },
+                    }
                     BitRegister::C => {
                         self.registers.c = !and_val & self.registers.c;
                         2
-                    },
+                    }
                     BitRegister::D => {
                         self.registers.d = !and_val & self.registers.d;
                         2
-                    },
+                    }
                     BitRegister::E => {
                         self.registers.e = !and_val & self.registers.e;
                         2
-                    },
+                    }
                     BitRegister::H => {
                         self.registers.h = !and_val & self.registers.h;
                         2
-                    },
+                    }
                     BitRegister::L => {
                         self.registers.l = !and_val & self.registers.l;
                         2
-                    },
+                    }
                     BitRegister::HLI => {
-                        self.bus.write_byte(self.registers.get_hl(), !and_val & self.bus.read_byte(self.registers.get_hl()));
-                        
+                        self.bus.write_byte(
+                            self.registers.get_hl(),
+                            !and_val & self.bus.read_byte(self.registers.get_hl()),
+                        );
+
                         4
-                    },
+                    }
                     BitRegister::A => {
                         self.registers.a = !and_val & self.registers.a;
                         2
-                    },
+                    }
                 };
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::RET(test) => self._return(self.jmp_test(test)),
-
             Instruction::RLA => {
                 let old_carry = self.registers.f.carry;
                 self.registers.f.carry = (self.registers.a & 128) > 0;
                 self.registers.a = self.registers.a.rotate_left(1) | (old_carry as u8);
                 self.pc.wrapping_add(1)
             }
-
             Instruction::RLC(target) => {
                 let (value, pc_inc) = match target {
                     ArithmeticByteTarget::A => (self.registers.a, 2),
@@ -825,13 +808,16 @@ impl CPU {
                     ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
                 };
 
-               self.registers.f.carry = value & 1 > 0;
-               self.registers.f.zero = value == 0;
+                self.registers.f.carry = value & 1 > 0;
+                self.registers.f.zero = value == 0;
 
                 let new_value = value.rotate_left(1);
 
                 if self.debug_view {
-                    println!("RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}", target, value, new_value, self.registers.f.carry);
+                    println!(
+                        "RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}",
+                        target, value, new_value, self.registers.f.carry
+                    );
                 }
 
                 match target {
@@ -842,110 +828,109 @@ impl CPU {
                     ArithmeticByteTarget::E => self.registers.e = new_value,
                     ArithmeticByteTarget::H => self.registers.h = new_value,
                     ArithmeticByteTarget::L => self.registers.l = new_value,
-                    ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
+                    ArithmeticByteTarget::HLI => {
+                        self.bus.write_byte(self.registers.get_hl(), new_value)
+                    }
                 }
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::RL(target) => {
-                let pc_inc = match target{
+                let pc_inc = match target {
                     ArithmeticByteTarget::A => {
                         self.registers.a = self.rl(self.registers.a);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::B => {
                         self.registers.b = self.rl(self.registers.b);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::C => {
                         self.registers.c = self.rl(self.registers.c);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::D => {
                         self.registers.d = self.rl(self.registers.d);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::E => {
                         self.registers.e = self.rl(self.registers.e);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::H => {
                         self.registers.h = self.rl(self.registers.h);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::L => {
                         self.registers.l = self.rl(self.registers.l);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::HLI => {
                         let address = self.registers.get_hl();
                         let new_value = self.rl(self.bus.read_byte(address));
                         self.bus.write_byte(address, new_value);
 
                         4
-                    },
+                    }
                 };
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::RR(target) => {
-                let pc_inc = match target{
+                let pc_inc = match target {
                     ArithmeticByteTarget::A => {
                         self.registers.a = self.rr(self.registers.a);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::B => {
                         self.registers.b = self.rr(self.registers.b);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::C => {
                         self.registers.c = self.rr(self.registers.c);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::D => {
                         self.registers.d = self.rr(self.registers.d);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::E => {
                         self.registers.e = self.rr(self.registers.e);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::H => {
                         self.registers.h = self.rr(self.registers.h);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::L => {
                         self.registers.l = self.rr(self.registers.l);
 
                         2
-                    },
+                    }
                     ArithmeticByteTarget::HLI => {
                         let address = self.registers.get_hl();
                         let new_value = self.rr(self.bus.read_byte(address));
                         self.bus.write_byte(address, new_value);
 
                         4
-                    },
+                    }
                 };
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::RRA => {
                 let old_carry = self.registers.f.carry;
 
@@ -953,7 +938,6 @@ impl CPU {
                 self.registers.a = self.registers.a.rotate_right(1) | (128 * (old_carry as u8));
                 self.pc.wrapping_add(1)
             }
-
             Instruction::RRC(target) => {
                 let (value, pc_inc) = match target {
                     ArithmeticByteTarget::A => (self.registers.a, 2),
@@ -966,13 +950,16 @@ impl CPU {
                     ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
                 };
 
-               self.registers.f.carry = value & 1 > 0;
-               self.registers.f.zero = value == 0;
+                self.registers.f.carry = value & 1 > 0;
+                self.registers.f.zero = value == 0;
 
                 let new_value = value.rotate_right(1);
 
                 if self.debug_view {
-                    println!("RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}", target, value, new_value, self.registers.f.carry);
+                    println!(
+                        "RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}",
+                        target, value, new_value, self.registers.f.carry
+                    );
                 }
 
                 match target {
@@ -983,12 +970,13 @@ impl CPU {
                     ArithmeticByteTarget::E => self.registers.e = new_value,
                     ArithmeticByteTarget::H => self.registers.h = new_value,
                     ArithmeticByteTarget::L => self.registers.l = new_value,
-                    ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
+                    ArithmeticByteTarget::HLI => {
+                        self.bus.write_byte(self.registers.get_hl(), new_value)
+                    }
                 }
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::RST(position) => {
                 let and_offset = match position {
                     BitPosition::Zero => 1,
@@ -1009,7 +997,6 @@ impl CPU {
 
                 self.pc
             }
-
             Instruction::SBC(target) => {
                 let (val, pc_inc) = match target {
                     SBCByteTarget::A => (self.registers.a, 1),
@@ -1027,12 +1014,14 @@ impl CPU {
                 self.registers.a = new_val;
 
                 if self.debug_view {
-                    println!("SBC. target={:?}, orig_val=0x{:x},new_val=0x{:x}", target, val, new_val);
+                    println!(
+                        "SBC. target={:?}, orig_val=0x{:x},new_val=0x{:x}",
+                        target, val, new_val
+                    );
                 }
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::SET(pos, register) => {
                 let or_val = match pos {
                     BitPosition::Zero => 1,
@@ -1049,48 +1038,49 @@ impl CPU {
                     BitRegister::B => {
                         self.registers.b = or_val | self.registers.b;
                         2
-                    },
+                    }
                     BitRegister::C => {
                         self.registers.c = or_val | self.registers.c;
                         2
-                    },
+                    }
                     BitRegister::D => {
                         self.registers.d = or_val | self.registers.d;
                         2
-                    },
+                    }
                     BitRegister::E => {
                         self.registers.e = or_val | self.registers.e;
                         2
-                    },
+                    }
                     BitRegister::H => {
                         self.registers.h = or_val | self.registers.h;
                         2
-                    },
+                    }
                     BitRegister::L => {
                         self.registers.l = or_val | self.registers.l;
                         2
-                    },
+                    }
                     BitRegister::HLI => {
-                        self.bus.write_byte(self.registers.get_hl(), or_val | self.bus.read_byte(self.registers.get_hl()));
+                        self.bus.write_byte(
+                            self.registers.get_hl(),
+                            or_val | self.bus.read_byte(self.registers.get_hl()),
+                        );
                         4
-                    },
+                    }
                     BitRegister::A => {
                         self.registers.a = or_val | self.registers.a;
                         2
-                    },
+                    }
                 };
 
                 self.pc.wrapping_add(pc_inc)
             }
-
             Instruction::SCF => {
                 self.registers.f.carry = true;
                 self.registers.f.half_carry = false;
                 self.registers.f.subtraction = false;
 
                 self.pc.wrapping_add(1)
-            },
-
+            }
             Instruction::SUB(target) => {
                 let (val, pc_inc) = match target {
                     SubByteTarget::A => (self.registers.a, 1),
@@ -1108,87 +1098,202 @@ impl CPU {
                 self.registers.a = new_val;
 
                 if self.debug_view {
-                    println!("SUB. target={:?}, orig_val=0x{:x},new_val=0x{:x}", target, val, new_val);
+                    println!(
+                        "SUB. target={:?}, orig_val=0x{:x},new_val=0x{:x}",
+                        target, val, new_val
+                    );
                 }
 
                 self.pc.wrapping_add(pc_inc)
             }
+            Instruction::SWAP(target) => self.swap(target),
+            Instruction::XOR(target) => self.xor_instr(target),
+            Instruction::STOP => self.stop(),
+            Instruction::RETI => self.reti(),
+            Instruction::SLA(target) => self.sla(target),
+            Instruction::DAA => self.daa(),
+            Instruction::EI => self.ei(),
+            Instruction::SRA(target) => self.sra(target),
+            Instruction::SRL(target) => self.sra(target),
+        }
+    }
 
-            Instruction::SWAP(target) => {
-                let (value, pc_inc) = match target {
-                    ArithmeticByteTarget::A => (self.registers.a, 2),
-                    ArithmeticByteTarget::B => (self.registers.b, 2),
-                    ArithmeticByteTarget::C => (self.registers.c, 2),
-                    ArithmeticByteTarget::D => (self.registers.d, 2),
-                    ArithmeticByteTarget::E => (self.registers.e, 2),
-                    ArithmeticByteTarget::H => (self.registers.h, 2),
-                    ArithmeticByteTarget::L => (self.registers.l, 2),
-                    ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
-                };
+    fn daa(&mut self) -> u16 {
+        todo!()
+    }
 
-               self.registers.f.zero = value == 0;
+    fn ei(&mut self) -> u16 {
+        todo!()
+    }
 
-                let new_value = value.rotate_left(4);
+    fn sra(&mut self, target: ArithmeticByteTarget) -> u16 {
+        let value = match target {
+            ArithmeticByteTarget::A => self.registers.a,
+            ArithmeticByteTarget::B => self.registers.b,
+            ArithmeticByteTarget::C => self.registers.c,
+            ArithmeticByteTarget::D => self.registers.d,
+            ArithmeticByteTarget::E => self.registers.e,
+            ArithmeticByteTarget::H => self.registers.h,
+            ArithmeticByteTarget::L => self.registers.l,
+            ArithmeticByteTarget::HLI => self.read_byte(self.registers.get_hl() as usize),
+        };
 
-                if self.debug_view {
-                    println!("SWAP. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, zero={}", target, value, new_value, self.registers.f.zero);
-                }
+        let mask: u8 = value & 0b10000000;
+        let new_value = value.shr(1) | mask;
 
-                match target {
-                    ArithmeticByteTarget::A => self.registers.a = new_value,
-                    ArithmeticByteTarget::B => self.registers.b = new_value,
-                    ArithmeticByteTarget::C => self.registers.c = new_value,
-                    ArithmeticByteTarget::D => self.registers.d = new_value,
-                    ArithmeticByteTarget::E => self.registers.e = new_value,
-                    ArithmeticByteTarget::H => self.registers.h = new_value,
-                    ArithmeticByteTarget::L => self.registers.l = new_value,
-                    ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
-                }
+        self.registers.f.zero = new_value == 0;
+        self.registers.f.subtraction = false;
+        self.registers.f.carry = false;
+        self.registers.f.half_carry = false;
 
-                self.pc.wrapping_add(pc_inc)
+        if self.debug_view {
+            println!("SRA. value=0x{:x},new_value=0x{:x}", value, new_value);
+        }
+
+        match target {
+            ArithmeticByteTarget::A => self.registers.a = new_value,
+            ArithmeticByteTarget::B => self.registers.b = new_value,
+            ArithmeticByteTarget::C => self.registers.c = new_value,
+            ArithmeticByteTarget::D => self.registers.d = new_value,
+            ArithmeticByteTarget::E => self.registers.e = new_value,
+            ArithmeticByteTarget::H => self.registers.h = new_value,
+            ArithmeticByteTarget::L => self.registers.l = new_value,
+            ArithmeticByteTarget::HLI => {
+                self.write_byte(self.registers.get_hl() as usize, new_value)
             }
+        }
 
-            Instruction::XOR(target) => match target {
-                XORTargetType::A => {
-                    self.registers.a = self.xor(self.registers.a);
-                    self.pc.wrapping_add(1)
-                }
-                XORTargetType::B => {
-                    self.registers.a = self.xor(self.registers.b);
-                    self.pc.wrapping_add(1)
-                }
-                XORTargetType::C => {
-                    self.registers.a = self.xor(self.registers.c);
-                    self.pc.wrapping_add(1)
-                }
-                XORTargetType::D => {
-                    self.registers.a = self.xor(self.registers.d);
-                    self.pc.wrapping_add(1)
-                }
-                XORTargetType::E => {
-                    self.registers.a = self.xor(self.registers.e);
-                    self.pc.wrapping_add(1)
-                }
-                XORTargetType::H => {
-                    self.registers.a = self.xor(self.registers.e);
-                    self.pc.wrapping_add(1)
-                }
-                XORTargetType::L => {
-                    self.registers.a = self.xor(self.registers.h);
-                    self.pc.wrapping_add(1)
-                }
-                XORTargetType::HLI => {
-                    self.registers.a = self.xor(self.bus.read_byte(self.registers.get_hl()));
-                    self.pc.wrapping_add(2)
-                }
-                XORTargetType::D8 => {
-                    let d8 = self.read_next_byte();
-                    self.registers.a = self.xor(d8);
-                    self.pc.wrapping_add(2)
-                },
-            },
-            _ => {
-                panic!("Unknown instruction: {:?}", instruction);
+        self.pc.wrapping_add(2)
+    }
+
+    fn sla(&mut self, target: ArithmeticByteTarget) -> u16 {
+        let value = match target {
+            ArithmeticByteTarget::A => self.registers.a,
+            ArithmeticByteTarget::B => self.registers.b,
+            ArithmeticByteTarget::C => self.registers.c,
+            ArithmeticByteTarget::D => self.registers.d,
+            ArithmeticByteTarget::E => self.registers.e,
+            ArithmeticByteTarget::H => self.registers.h,
+            ArithmeticByteTarget::L => self.registers.l,
+            ArithmeticByteTarget::HLI => self.read_byte(self.registers.get_hl() as usize),
+        };
+
+        let mask: u8 = value & 0b1;
+        let new_value = value.shl(1) | mask;
+
+        self.registers.f.zero = new_value == 0;
+        self.registers.f.subtraction = false;
+        self.registers.f.carry = false;
+        self.registers.f.half_carry = false;
+
+        if self.debug_view {
+            println!("SRA. value=0x{:x},new_value=0x{:x}", value, new_value);
+        }
+
+        match target {
+            ArithmeticByteTarget::A => self.registers.a = new_value,
+            ArithmeticByteTarget::B => self.registers.b = new_value,
+            ArithmeticByteTarget::C => self.registers.c = new_value,
+            ArithmeticByteTarget::D => self.registers.d = new_value,
+            ArithmeticByteTarget::E => self.registers.e = new_value,
+            ArithmeticByteTarget::H => self.registers.h = new_value,
+            ArithmeticByteTarget::L => self.registers.l = new_value,
+            ArithmeticByteTarget::HLI => {
+                self.write_byte(self.registers.get_hl() as usize, new_value)
+            }
+        }
+
+        self.pc.wrapping_add(2)
+    }
+
+    // Unconditional return from a function. Also enables interrupts by setting IME=1
+    fn reti(&mut self) -> u16 {
+        //TODO: Set IME=1
+
+        self.pop()
+    }
+
+    fn stop(&mut self) -> u16 {
+        self.is_halted = true;
+
+        self.pc.wrapping_add(1)
+    }
+
+    fn swap(&mut self, target: ArithmeticByteTarget) -> u16 {
+        let (value, pc_inc) = match target {
+            ArithmeticByteTarget::A => (self.registers.a, 2),
+            ArithmeticByteTarget::B => (self.registers.b, 2),
+            ArithmeticByteTarget::C => (self.registers.c, 2),
+            ArithmeticByteTarget::D => (self.registers.d, 2),
+            ArithmeticByteTarget::E => (self.registers.e, 2),
+            ArithmeticByteTarget::H => (self.registers.h, 2),
+            ArithmeticByteTarget::L => (self.registers.l, 2),
+            ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
+        };
+
+        self.registers.f.zero = value == 0;
+
+        let new_value = value.rotate_left(4);
+
+        if self.debug_view {
+            println!(
+                "SWAP. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, zero={}",
+                target, value, new_value, self.registers.f.zero
+            );
+        }
+
+        match target {
+            ArithmeticByteTarget::A => self.registers.a = new_value,
+            ArithmeticByteTarget::B => self.registers.b = new_value,
+            ArithmeticByteTarget::C => self.registers.c = new_value,
+            ArithmeticByteTarget::D => self.registers.d = new_value,
+            ArithmeticByteTarget::E => self.registers.e = new_value,
+            ArithmeticByteTarget::H => self.registers.h = new_value,
+            ArithmeticByteTarget::L => self.registers.l = new_value,
+            ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
+        }
+
+        self.pc.wrapping_add(pc_inc)
+    }
+
+    fn xor_instr(&mut self, target: XORTargetType) -> u16 {
+        match target {
+            XORTargetType::A => {
+                self.registers.a = self.xor(self.registers.a);
+                self.pc.wrapping_add(1)
+            }
+            XORTargetType::B => {
+                self.registers.a = self.xor(self.registers.b);
+                self.pc.wrapping_add(1)
+            }
+            XORTargetType::C => {
+                self.registers.a = self.xor(self.registers.c);
+                self.pc.wrapping_add(1)
+            }
+            XORTargetType::D => {
+                self.registers.a = self.xor(self.registers.d);
+                self.pc.wrapping_add(1)
+            }
+            XORTargetType::E => {
+                self.registers.a = self.xor(self.registers.e);
+                self.pc.wrapping_add(1)
+            }
+            XORTargetType::H => {
+                self.registers.a = self.xor(self.registers.e);
+                self.pc.wrapping_add(1)
+            }
+            XORTargetType::L => {
+                self.registers.a = self.xor(self.registers.h);
+                self.pc.wrapping_add(1)
+            }
+            XORTargetType::HLI => {
+                self.registers.a = self.xor(self.bus.read_byte(self.registers.get_hl()));
+                self.pc.wrapping_add(2)
+            }
+            XORTargetType::D8 => {
+                let d8 = self.read_next_byte();
+                self.registers.a = self.xor(d8);
+                self.pc.wrapping_add(2)
             }
         }
     }
@@ -1396,28 +1501,16 @@ mod tests {
 
     use super::{Instruction, CPU};
 
-	#[test_matrix(
+    #[test_matrix(
         0x00_u8..=0xFF_u8,
         [true, false]
     )]
-	fn test_all_instructions_empty_cpu(opcode: u8, prefixed: bool){
-		let ndef: [u8; 12] = [
-			0xCB,
-			0xD3,
-			0xDB,
-			0xDD,
-			0xE3,
-			0xE4,
-			0xEB,
-			0xEC,
-			0xED,
-			0xF4,
-			0xFC,
-			0xFD,
+    fn test_all_instructions_empty_cpu(opcode: u8, prefixed: bool) {
+        let ndef: [u8; 12] = [
+            0xCB, 0xD3, 0xDB, 0xDD, 0xE3, 0xE4, 0xEB, 0xEC, 0xED, 0xF4, 0xFC, 0xFD,
+        ];
 
-		];
-
-		if !prefixed && ndef.contains(&opcode) {
+        if !prefixed && ndef.contains(&opcode) {
             return;
         }
 
@@ -1426,5 +1519,5 @@ mod tests {
         let mut cpu = CPU::new_and_empty();
 
         cpu.execute(instruction);
-	}
+    }
 }

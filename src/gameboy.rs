@@ -1,12 +1,10 @@
-use std::time::Instant;
-
 use ggez::{Context, GameError, GameResult};
 
 use crate::{cpu::CPU, display::GbDisplay};
 
 // const CLOCK_SPEED_MHz: f32 = 4.194304;
 // const CPU_INSTRUCTION_MHz: f32 = CLOCK_SPEED_MHz / 4.0;
-const DESIRED_RENDER_FPS: f32 = 30.0;   // Can't imagine we'd ever need more than this?
+// const DESIRED_RENDER_FPS: f32 = 30.0; // Can't imagine we'd ever need more than this?
 
 pub struct Gameboy {
     //TODO: set as private once proper control is implemented
@@ -18,10 +16,10 @@ pub struct Gameboy {
 }
 
 impl Gameboy {
-    pub fn new_and_empty() -> Self {
-        Self { 
-            cpu: CPU::new(), 
-            display: GbDisplay::new(), 
+    pub fn new_and_empty(debug: bool) -> Self {
+        Self {
+            cpu: CPU::new(debug),
+            display: GbDisplay::new(),
             running: false,
             dt: std::time::Duration::new(0, 0),
         }
@@ -33,8 +31,14 @@ impl Gameboy {
         // self.run();
     }
 
-    pub fn load_cartridge(&mut self, path: &str){
+    pub fn load_cartridge(&mut self, path: &str) {
         self.cpu.load_cartridge(path);
+    }
+
+    pub fn run(&mut self) {
+        while self.running {
+            self.cpu.step();
+        }
     }
 }
 
@@ -45,11 +49,15 @@ impl ggez::event::EventHandler<GameError> for Gameboy {
         Ok(())
     }
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        println!("Hello ggez! dt = {}ns, FPS={}", self.dt.as_nanos(), 1.0 / self.dt.as_secs_f32());
+        println!(
+            "Hello ggez! dt = {}ns, FPS={}",
+            self.dt.as_nanos(),
+            1.0 / self.dt.as_secs_f32()
+        );
         println!("screen size: {:?}", ctx.gfx.size());
-        
-        self.display.render(ctx, &mut self.cpu);
+
+        let _ = self.display.render(ctx, &mut self.cpu);
 
         Ok(())
     }
-  }
+}
