@@ -92,8 +92,7 @@ pub struct MemoryBus {
 
     memory: [u8; 0x10000],
 
-    gpu: GPU,
-
+    // gpu: GPU,
     cartridge: Vec<u8>,
 }
 
@@ -103,7 +102,7 @@ impl MemoryBus {
             boot_rom: [0; 0x100],
             memory: [0; 0x10000],
             cartridge: Default::default(),
-            gpu: GPU::new(),
+            // gpu: GPU::new(),
         }
     }
 
@@ -136,6 +135,8 @@ impl MemoryBus {
                 for i in 0..0x4000 {
                     self.memory[i] = self.cartridge[i];
                 }
+
+                //TODO: handle different memory banks
             }
             Err(_) => panic!("Failed to load cartridge at {}", load_pth),
         };
@@ -153,7 +154,7 @@ impl MemoryBus {
                     self.memory[address as usize]
                 }
             }
-            MemoryRegion::TileRAM => self.gpu.read_vram((address - VRAM_BEGIN) as usize),
+            // MemoryRegion::TileRAM => self.gpu.read_vram((address - VRAM_BEGIN) as usize),
             _ => self.memory[address as usize],
         }
     }
@@ -169,7 +170,7 @@ impl MemoryBus {
             MemoryRegion::BootROM | MemoryRegion::GameROMBank0 | MemoryRegion::GameROMBankN => {}
 
             // graphics RAM should be handled by the PGU
-            MemoryRegion::TileRAM => self.gpu.write_vram(address - VRAM_BEGIN, value),
+            // MemoryRegion::TileRAM => self.gpu.write_vram(address - VRAM_BEGIN, value),
 
             // everything else can be written as usual
             _ => self.memory[address as usize] = value,
@@ -192,9 +193,7 @@ impl MemoryBus {
         new_val
     }
 
-    pub fn update_ppu_lock(&mut self, ppu_mode: PPUMode) {
-        todo!();
-    }
+    pub fn update_ppu_lock(&mut self, ppu_mode: PPUMode) {}
 }
 
 // #[derive(Debug, Copy, Clone)]

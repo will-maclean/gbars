@@ -17,7 +17,6 @@ pub struct CPU {
     registers: Registers,
     pc: u16,
     sp: u16,
-    bus: MemoryBus,
     is_halted: bool,
     debug_view: bool,
     instruction_counter: i64,
@@ -29,7 +28,6 @@ impl CPU {
             registers: Default::default(),
             pc: 0,
             sp: 0xFFFF,
-            bus: MemoryBus::new_and_load_bios(),
             is_halted: false,
             debug_view: debug,
             instruction_counter: 0,
@@ -40,7 +38,6 @@ impl CPU {
             registers: Default::default(),
             pc: 0,
             sp: 0xFFFF,
-            bus: MemoryBus::new_and_empty(),
             is_halted: false,
             debug_view: true,
             instruction_counter: 0,
@@ -51,19 +48,12 @@ impl CPU {
         self.pc = 0;
     }
 
-    pub fn load_cartridge(&mut self, path: &str) {
-        self.bus.load_cartridge(path);
-    }
-
-    pub fn step(&mut self) -> bool {
-        if !self.bus.boot_mode_active() {
-            panic!("ROM finished")
-        }
-        let mut instruction_byte = self.bus.read_byte(self.pc);
+    pub fn step(&mut self, bus: &mut MemoryBus) -> bool {
+        let mut instruction_byte = bus.read_byte(self.pc);
 
         let prefix = instruction_byte == 0xCB;
         if prefix {
-            instruction_byte = self.bus.read_byte(self.pc + 1);
+            instruction_byte = bus.read_byte(self.pc + 1);
         }
 
         self.pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefix) {
@@ -74,31 +64,31 @@ impl CPU {
                     if prefix { "cb" } else { "" },
                     instruction_byte,
                     self.pc,
-                    self.bus.boot_mode_active(),
+                    bus.boot_mode_active(),
                     self.registers,
                     self.sp
                 )
             }
-            self.execute(instruction)
+            self.execute(instruction, bus)
         } else {
             let description = format!("0x{}{:x}", if prefix { "cb" } else { "" }, instruction_byte);
             panic!("Unkown instruction found for: {}", description)
         };
+
+        // if self.pc == 0xfe {
+        //     panic!("disabling boot rom!! made it");
+        // }
+
+        // if self.pc > 0xa7 {
+        //     panic!("pc is very high... pc=0x{:x}", self.pc);
+        // }
 
         self.instruction_counter += 1;
 
         true
     }
 
-    pub fn read_byte(&mut self, address: usize) -> u8 {
-        self.bus.read_byte(address as u16)
-    }
-
-    pub fn write_byte(&mut self, address: usize, value: u8) {
-        self.bus.write_byte(address as u16, value);
-    }
-
-    fn execute(&mut self, instruction: Instruction) -> u16 {
+    fn execute(&mut self, instruction: Instruction, bus: &mut MemoryBus) -> u16 {
         if self.is_halted {
             return self.pc;
         }
@@ -113,8 +103,8 @@ impl CPU {
                     AdcTargetType::E => (self.registers.e, 1),
                     AdcTargetType::H => (self.registers.h, 1),
                     AdcTargetType::L => (self.registers.l, 1),
-                    AdcTargetType::HLI => (self.bus.read_byte(self.registers.get_hl()), 1),
-                    AdcTargetType::D8 => (self.read_next_byte(), 2),
+                    AdcTargetType::HLI => (bus.read_byte(self.registers.get_hl()), 1),
+                    AdcTargetType::D8 => (self.read_next_byte(bus), 2),
                 };
 
                 self.registers.a = self.add_byte(val + (self.registers.f.carry as u8));
@@ -166,13 +156,13 @@ impl CPU {
                         self.pc.wrapping_add(1)
                     }
                     AddByteTarget::HLI => {
-                        let value = self.bus.read_byte(self.registers.get_hl());
+                        let value = bus.read_byte(self.registers.get_hl());
                         let new_value = self.add_byte(value);
                         self.registers.a = new_value;
                         self.pc.wrapping_add(2)
                     }
                     AddByteTarget::D8 => {
-                        let d8 = self.read_next_byte();
+                        let d8 = self.read_next_byte(bus);
                         let new_value = self.add_byte(d8);
                         self.registers.a = new_value;
 
@@ -193,7 +183,7 @@ impl CPU {
                     self.pc.wrapping_add(2)
                 }
                 AddTargetType::SPS8 => {
-                    let value = self.read_next_byte();
+                    let value = self.read_next_byte(bus);
                     let (new_value, overflow) = self.sp.overflowing_add_signed(value.into());
                     self.sp = new_value as u16;
 
@@ -235,11 +225,11 @@ impl CPU {
                     self.pc.wrapping_add(1)
                 }
                 AndTargetType::HLI => {
-                    self.registers.a = self.and(self.bus.read_byte(self.registers.get_hl()));
+                    self.registers.a = self.and(bus.read_byte(self.registers.get_hl()));
                     self.pc.wrapping_add(2)
                 }
                 AndTargetType::D8 => {
-                    let d8 = self.read_next_byte();
+                    let d8 = self.read_next_byte(bus);
                     self.registers.a = self.and(d8);
                     self.pc.wrapping_add(2)
                 }
@@ -263,10 +253,7 @@ impl CPU {
                     BitRegister::E => ((self.registers.e & and_val) > 0, 2),
                     BitRegister::H => ((self.registers.h & and_val) > 0, 2),
                     BitRegister::L => ((self.registers.l & and_val) > 0, 2),
-                    BitRegister::HLI => (
-                        (self.bus.read_byte(self.registers.get_hl()) & and_val) > 0,
-                        2,
-                    ),
+                    BitRegister::HLI => ((bus.read_byte(self.registers.get_hl()) & and_val) > 0, 2),
                     BitRegister::A => ((self.registers.a & and_val) > 0, 2),
                 };
 
@@ -276,7 +263,7 @@ impl CPU {
             }
             Instruction::CALL(test) => {
                 let should_jump = self.jmp_test(test);
-                let new_pc = self.call(should_jump);
+                let new_pc = self.call(should_jump, bus);
 
                 if self.debug_view {
                     println!(
@@ -304,9 +291,9 @@ impl CPU {
                     crate::instructions::CPByteTarget::H => (self.registers.h, 1),
                     crate::instructions::CPByteTarget::L => (self.registers.l, 1),
                     crate::instructions::CPByteTarget::HLI => {
-                        (self.bus.read_byte(self.registers.get_hl()), 1)
+                        (bus.read_byte(self.registers.get_hl()), 1)
                     }
-                    crate::instructions::CPByteTarget::D8 => (self.read_next_byte(), 2),
+                    crate::instructions::CPByteTarget::D8 => (self.read_next_byte(bus), 2),
                 };
 
                 // we don't actually care about the result, so we can discard it
@@ -368,9 +355,9 @@ impl CPU {
                         }
                         ArithmeticByteTarget::HLI => {
                             let addr = self.registers.get_hl();
-                            let value = self.bus.read_byte(addr);
+                            let value = bus.read_byte(addr);
                             let new_value = self.dec_byte(value);
-                            self.bus.write_byte(self.registers.get_hl(), new_value);
+                            bus.write_byte(self.registers.get_hl(), new_value);
 
                             3
                         }
@@ -436,9 +423,9 @@ impl CPU {
                         }
                         ArithmeticByteTarget::HLI => {
                             let addr = self.registers.get_hl();
-                            let value = self.bus.read_byte(addr);
+                            let value = bus.read_byte(addr);
                             let new_value = self.inc_byte(value);
-                            self.bus.write_byte(self.registers.get_hl(), new_value);
+                            bus.write_byte(self.registers.get_hl(), new_value);
 
                             3
                         }
@@ -451,18 +438,18 @@ impl CPU {
                 let jump_condition = self.jmp_test(test);
 
                 match target {
-                    JpAddrLoc::A16 => self.jump(jump_condition),
+                    JpAddrLoc::A16 => self.jump(jump_condition, bus),
                     JpAddrLoc::HL => self.registers.get_hl(),
                 }
             }
             Instruction::JR(test) => {
                 if self.jmp_test(test.clone()) {
-                    let offset = (self.read_next_byte() as i8).wrapping_add(2).into();
+                    let offset = (self.read_next_byte(bus) as i8).wrapping_add(2).into();
                     let new_pc = self.pc.wrapping_add_signed(offset);
 
                     if self.debug_view {
                         println!("JR ({:?}), test succesful, jumping {}(unsigned=0x{:x}) + pc=0x{:x} = 0x{:x}", 
-                        test, offset, self.read_next_byte(), self.pc, new_pc);
+                        test, offset, self.read_next_byte(bus), self.pc, new_pc);
                     }
 
                     new_pc
@@ -477,8 +464,8 @@ impl CPU {
                 LoadType::Byte(target, source) => {
                     let source_value = match source {
                         LoadByteSource::A => self.registers.a,
-                        LoadByteSource::D8 => self.read_next_byte(),
-                        LoadByteSource::HLI => self.bus.read_byte(self.registers.get_hl()),
+                        LoadByteSource::D8 => self.read_next_byte(bus),
+                        LoadByteSource::HLI => bus.read_byte(self.registers.get_hl()),
                         LoadByteSource::B => self.registers.b,
                         LoadByteSource::C => self.registers.c,
                         LoadByteSource::D => self.registers.d,
@@ -490,7 +477,7 @@ impl CPU {
                     match target {
                         LoadByteTarget::A => self.registers.a = source_value,
                         LoadByteTarget::HLI => {
-                            self.bus.write_byte(self.registers.get_hl(), source_value)
+                            bus.write_byte(self.registers.get_hl(), source_value)
                         }
                         LoadByteTarget::B => self.registers.b = source_value,
                         LoadByteTarget::C => self.registers.c = source_value,
@@ -515,10 +502,10 @@ impl CPU {
                 LoadType::Word(load_word_target, load_word_source) => {
                     let source_value = match load_word_source {
                         LoadWordSource::BC => self.registers.get_bc(),
-                        LoadWordSource::D16 => self.read_next_word(),
+                        LoadWordSource::D16 => self.read_next_word(bus),
                         LoadWordSource::HL => self.registers.get_hl(),
                         LoadWordSource::SPPlusS8 => {
-                            let s8 = self.read_next_byte() as i8;
+                            let s8 = self.read_next_byte(bus) as i8;
                             self.sp.wrapping_add_signed(s8.into())
                         }
                     };
@@ -546,7 +533,7 @@ impl CPU {
                 }
                 LoadType::AIntoHLInc => {
                     let write_addr = self.registers.get_hl();
-                    self.bus.write_byte(write_addr, self.registers.a);
+                    bus.write_byte(write_addr, self.registers.a);
                     self.registers.set_hl(write_addr.wrapping_add(1));
 
                     if self.debug_view {
@@ -560,7 +547,7 @@ impl CPU {
                 }
                 LoadType::AIntoHLDec => {
                     let write_addr = self.registers.get_hl();
-                    self.bus.write_byte(write_addr, self.registers.a);
+                    bus.write_byte(write_addr, self.registers.a);
                     self.registers.set_hl(write_addr.wrapping_sub(1));
 
                     if self.debug_view {
@@ -575,18 +562,18 @@ impl CPU {
                 LoadType::AFromByteAddress(ld_byte_address) => {
                     let (addr_inc, pc_inc) = match ld_byte_address {
                         LdByteAddress::C => (self.registers.c, 2),
-                        LdByteAddress::A8 => (self.read_next_byte(), 2),
+                        LdByteAddress::A8 => (self.read_next_byte(bus), 2),
                     };
 
                     let addr = 0xFF00_u16 | (addr_inc as u16);
 
-                    self.registers.a = self.bus.read_byte(addr);
+                    self.registers.a = bus.read_byte(addr);
 
                     if self.debug_view {
                         println!(
                             "LD (AFromByteAddress). From source=({:?}),value=0x{:x} to address=A",
                             ld_byte_address,
-                            self.bus.read_byte(addr)
+                            bus.read_byte(addr)
                         );
                     }
 
@@ -595,12 +582,12 @@ impl CPU {
                 LoadType::ByteAddressFromA(ld_byte_address) => {
                     let (addr_inc, pc_inc) = match ld_byte_address {
                         LdByteAddress::C => (self.registers.c, 1),
-                        LdByteAddress::A8 => (self.read_next_byte(), 2),
+                        LdByteAddress::A8 => (self.read_next_byte(bus), 2),
                     };
 
                     let addr = 0xFF00 | (addr_inc as u16);
 
-                    self.bus.write_byte(addr, self.registers.a);
+                    bus.write_byte(addr, self.registers.a);
 
                     if self.debug_view {
                         println!(
@@ -615,10 +602,10 @@ impl CPU {
                     let (addr, pc_inc) = match addr_source {
                         LdIndirectAddr::BC => (self.registers.get_bc(), 1),
                         LdIndirectAddr::DE => (self.registers.get_de(), 1),
-                        LdIndirectAddr::A16 => (self.read_next_word(), 3),
+                        LdIndirectAddr::A16 => (self.read_next_word(bus), 3),
                     };
 
-                    self.registers.a = self.bus.read_byte(addr);
+                    self.registers.a = bus.read_byte(addr);
 
                     if self.debug_view {
                         println!(
@@ -630,25 +617,23 @@ impl CPU {
                     self.pc.wrapping_add(pc_inc)
                 }
                 LoadType::IndirectFromA(addr_target) => {
-                    let addr = self.read_next_word();
-                    self.bus.write_byte(addr, self.registers.a);
+                    let addr = self.read_next_word(bus);
+                    bus.write_byte(addr, self.registers.a);
 
                     let pc_inc = match addr_target {
                         LdIndirectAddr::BC => {
-                            self.bus
-                                .write_byte(self.registers.get_bc(), self.registers.a);
+                            bus.write_byte(self.registers.get_bc(), self.registers.a);
 
                             1
                         }
                         LdIndirectAddr::DE => {
-                            self.bus
-                                .write_byte(self.registers.get_de(), self.registers.a);
+                            bus.write_byte(self.registers.get_de(), self.registers.a);
 
                             1
                         }
                         LdIndirectAddr::A16 => {
-                            let write_addr = self.read_next_word();
-                            self.bus.write_byte(write_addr, self.registers.a);
+                            let write_addr = self.read_next_word(bus);
+                            bus.write_byte(write_addr, self.registers.a);
 
                             3
                         }
@@ -697,18 +682,18 @@ impl CPU {
                     self.pc.wrapping_add(1)
                 }
                 ORTargetType::HLI => {
-                    self.registers.a = self.or(self.bus.read_byte(self.registers.get_hl()));
+                    self.registers.a = self.or(bus.read_byte(self.registers.get_hl()));
                     self.pc.wrapping_add(2)
                 }
                 ORTargetType::D8 => {
-                    let d8 = self.read_next_byte();
+                    let d8 = self.read_next_byte(bus);
                     self.registers.a = self.or(d8);
 
                     self.pc.wrapping_add(2)
                 }
             },
             Instruction::POP(target) => {
-                let result = self.pop();
+                let result = self.pop(bus);
                 match target {
                     StackTarget::BC => self.registers.set_bc(result),
                     StackTarget::DE => self.registers.set_de(result),
@@ -725,7 +710,7 @@ impl CPU {
                     StackTarget::AF => self.registers.get_af(),
                 };
 
-                self.push(value);
+                self.push(value, bus);
 
                 if self.debug_view {
                     println!(
@@ -774,9 +759,9 @@ impl CPU {
                         2
                     }
                     BitRegister::HLI => {
-                        self.bus.write_byte(
+                        bus.write_byte(
                             self.registers.get_hl(),
-                            !and_val & self.bus.read_byte(self.registers.get_hl()),
+                            !and_val & bus.read_byte(self.registers.get_hl()),
                         );
 
                         4
@@ -789,7 +774,7 @@ impl CPU {
 
                 self.pc.wrapping_add(pc_inc)
             }
-            Instruction::RET(test) => self._return(self.jmp_test(test)),
+            Instruction::RET(test) => self._return(self.jmp_test(test), bus),
             Instruction::RLA => {
                 let old_carry = self.registers.f.carry;
                 self.registers.f.carry = (self.registers.a & 128) > 0;
@@ -805,7 +790,7 @@ impl CPU {
                     ArithmeticByteTarget::E => (self.registers.e, 2),
                     ArithmeticByteTarget::H => (self.registers.h, 2),
                     ArithmeticByteTarget::L => (self.registers.l, 2),
-                    ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
+                    ArithmeticByteTarget::HLI => (bus.read_byte(self.registers.get_hl()), 4),
                 };
 
                 self.registers.f.carry = value & 1 > 0;
@@ -828,9 +813,7 @@ impl CPU {
                     ArithmeticByteTarget::E => self.registers.e = new_value,
                     ArithmeticByteTarget::H => self.registers.h = new_value,
                     ArithmeticByteTarget::L => self.registers.l = new_value,
-                    ArithmeticByteTarget::HLI => {
-                        self.bus.write_byte(self.registers.get_hl(), new_value)
-                    }
+                    ArithmeticByteTarget::HLI => bus.write_byte(self.registers.get_hl(), new_value),
                 }
 
                 self.pc.wrapping_add(pc_inc)
@@ -874,8 +857,8 @@ impl CPU {
                     }
                     ArithmeticByteTarget::HLI => {
                         let address = self.registers.get_hl();
-                        let new_value = self.rl(self.bus.read_byte(address));
-                        self.bus.write_byte(address, new_value);
+                        let new_value = self.rl(bus.read_byte(address));
+                        bus.write_byte(address, new_value);
 
                         4
                     }
@@ -922,8 +905,8 @@ impl CPU {
                     }
                     ArithmeticByteTarget::HLI => {
                         let address = self.registers.get_hl();
-                        let new_value = self.rr(self.bus.read_byte(address));
-                        self.bus.write_byte(address, new_value);
+                        let new_value = self.rr(bus.read_byte(address));
+                        bus.write_byte(address, new_value);
 
                         4
                     }
@@ -947,7 +930,7 @@ impl CPU {
                     ArithmeticByteTarget::E => (self.registers.e, 2),
                     ArithmeticByteTarget::H => (self.registers.h, 2),
                     ArithmeticByteTarget::L => (self.registers.l, 2),
-                    ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
+                    ArithmeticByteTarget::HLI => (bus.read_byte(self.registers.get_hl()), 4),
                 };
 
                 self.registers.f.carry = value & 1 > 0;
@@ -970,9 +953,7 @@ impl CPU {
                     ArithmeticByteTarget::E => self.registers.e = new_value,
                     ArithmeticByteTarget::H => self.registers.h = new_value,
                     ArithmeticByteTarget::L => self.registers.l = new_value,
-                    ArithmeticByteTarget::HLI => {
-                        self.bus.write_byte(self.registers.get_hl(), new_value)
-                    }
+                    ArithmeticByteTarget::HLI => bus.write_byte(self.registers.get_hl(), new_value),
                 }
 
                 self.pc.wrapping_add(pc_inc)
@@ -989,10 +970,10 @@ impl CPU {
                     BitPosition::Seven => 128,
                 };
 
-                self.push(self.pc);
+                self.push(self.pc, bus);
 
-                let msb = self.bus.read_byte(and_offset) as u16;
-                let lsb = self.bus.read_byte(and_offset.wrapping_add(1)) as u16;
+                let msb = bus.read_byte(and_offset) as u16;
+                let lsb = bus.read_byte(and_offset.wrapping_add(1)) as u16;
                 self.pc = msb << 8 | lsb;
 
                 self.pc
@@ -1006,8 +987,8 @@ impl CPU {
                     SBCByteTarget::E => (self.registers.e, 1),
                     SBCByteTarget::H => (self.registers.h, 1),
                     SBCByteTarget::L => (self.registers.l, 1),
-                    SBCByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 1),
-                    SBCByteTarget::D8 => (self.read_next_byte(), 2),
+                    SBCByteTarget::HLI => (bus.read_byte(self.registers.get_hl()), 1),
+                    SBCByteTarget::D8 => (self.read_next_byte(bus), 2),
                 };
 
                 let new_val = self.sub(val.wrapping_add(self.registers.f.carry as u8));
@@ -1060,9 +1041,9 @@ impl CPU {
                         2
                     }
                     BitRegister::HLI => {
-                        self.bus.write_byte(
+                        bus.write_byte(
                             self.registers.get_hl(),
-                            or_val | self.bus.read_byte(self.registers.get_hl()),
+                            or_val | bus.read_byte(self.registers.get_hl()),
                         );
                         4
                     }
@@ -1090,8 +1071,8 @@ impl CPU {
                     SubByteTarget::E => (self.registers.e, 1),
                     SubByteTarget::H => (self.registers.h, 1),
                     SubByteTarget::L => (self.registers.l, 1),
-                    SubByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 1),
-                    SubByteTarget::D8 => (self.read_next_byte(), 2),
+                    SubByteTarget::HLI => (bus.read_byte(self.registers.get_hl()), 1),
+                    SubByteTarget::D8 => (self.read_next_byte(bus), 2),
                 };
 
                 let new_val = self.sub(val);
@@ -1106,15 +1087,15 @@ impl CPU {
 
                 self.pc.wrapping_add(pc_inc)
             }
-            Instruction::SWAP(target) => self.swap(target),
-            Instruction::XOR(target) => self.xor_instr(target),
+            Instruction::SWAP(target) => self.swap(target, bus),
+            Instruction::XOR(target) => self.xor_instr(target, bus),
             Instruction::STOP => self.stop(),
-            Instruction::RETI => self.reti(),
-            Instruction::SLA(target) => self.sla(target),
+            Instruction::RETI => self.reti(bus),
+            Instruction::SLA(target) => self.sla(target, bus),
             Instruction::DAA => self.daa(),
             Instruction::EI => self.ei(),
-            Instruction::SRA(target) => self.sra(target),
-            Instruction::SRL(target) => self.sra(target),
+            Instruction::SRA(target) => self.sra(target, bus),
+            Instruction::SRL(target) => self.sra(target, bus),
         }
     }
 
@@ -1123,10 +1104,11 @@ impl CPU {
     }
 
     fn ei(&mut self) -> u16 {
+        println!("Hit an EI! pc=0x{:x}", self.pc);
         todo!()
     }
 
-    fn sra(&mut self, target: ArithmeticByteTarget) -> u16 {
+    fn sra(&mut self, target: ArithmeticByteTarget, bus: &mut MemoryBus) -> u16 {
         let value = match target {
             ArithmeticByteTarget::A => self.registers.a,
             ArithmeticByteTarget::B => self.registers.b,
@@ -1135,7 +1117,7 @@ impl CPU {
             ArithmeticByteTarget::E => self.registers.e,
             ArithmeticByteTarget::H => self.registers.h,
             ArithmeticByteTarget::L => self.registers.l,
-            ArithmeticByteTarget::HLI => self.read_byte(self.registers.get_hl() as usize),
+            ArithmeticByteTarget::HLI => bus.read_byte(self.registers.get_hl()),
         };
 
         let mask: u8 = value & 0b10000000;
@@ -1158,15 +1140,13 @@ impl CPU {
             ArithmeticByteTarget::E => self.registers.e = new_value,
             ArithmeticByteTarget::H => self.registers.h = new_value,
             ArithmeticByteTarget::L => self.registers.l = new_value,
-            ArithmeticByteTarget::HLI => {
-                self.write_byte(self.registers.get_hl() as usize, new_value)
-            }
+            ArithmeticByteTarget::HLI => bus.write_byte(self.registers.get_hl(), new_value),
         }
 
         self.pc.wrapping_add(2)
     }
 
-    fn sla(&mut self, target: ArithmeticByteTarget) -> u16 {
+    fn sla(&mut self, target: ArithmeticByteTarget, bus: &mut MemoryBus) -> u16 {
         let value = match target {
             ArithmeticByteTarget::A => self.registers.a,
             ArithmeticByteTarget::B => self.registers.b,
@@ -1175,7 +1155,7 @@ impl CPU {
             ArithmeticByteTarget::E => self.registers.e,
             ArithmeticByteTarget::H => self.registers.h,
             ArithmeticByteTarget::L => self.registers.l,
-            ArithmeticByteTarget::HLI => self.read_byte(self.registers.get_hl() as usize),
+            ArithmeticByteTarget::HLI => bus.read_byte(self.registers.get_hl()),
         };
 
         let mask: u8 = value & 0b1;
@@ -1198,19 +1178,17 @@ impl CPU {
             ArithmeticByteTarget::E => self.registers.e = new_value,
             ArithmeticByteTarget::H => self.registers.h = new_value,
             ArithmeticByteTarget::L => self.registers.l = new_value,
-            ArithmeticByteTarget::HLI => {
-                self.write_byte(self.registers.get_hl() as usize, new_value)
-            }
+            ArithmeticByteTarget::HLI => bus.write_byte(self.registers.get_hl(), new_value),
         }
 
         self.pc.wrapping_add(2)
     }
 
     // Unconditional return from a function. Also enables interrupts by setting IME=1
-    fn reti(&mut self) -> u16 {
+    fn reti(&mut self, bus: &MemoryBus) -> u16 {
         //TODO: Set IME=1
 
-        self.pop()
+        self.pop(bus)
     }
 
     fn stop(&mut self) -> u16 {
@@ -1219,7 +1197,7 @@ impl CPU {
         self.pc.wrapping_add(1)
     }
 
-    fn swap(&mut self, target: ArithmeticByteTarget) -> u16 {
+    fn swap(&mut self, target: ArithmeticByteTarget, bus: &mut MemoryBus) -> u16 {
         let (value, pc_inc) = match target {
             ArithmeticByteTarget::A => (self.registers.a, 2),
             ArithmeticByteTarget::B => (self.registers.b, 2),
@@ -1228,7 +1206,7 @@ impl CPU {
             ArithmeticByteTarget::E => (self.registers.e, 2),
             ArithmeticByteTarget::H => (self.registers.h, 2),
             ArithmeticByteTarget::L => (self.registers.l, 2),
-            ArithmeticByteTarget::HLI => (self.bus.read_byte(self.registers.get_hl()), 4),
+            ArithmeticByteTarget::HLI => (bus.read_byte(self.registers.get_hl()), 4),
         };
 
         self.registers.f.zero = value == 0;
@@ -1250,13 +1228,13 @@ impl CPU {
             ArithmeticByteTarget::E => self.registers.e = new_value,
             ArithmeticByteTarget::H => self.registers.h = new_value,
             ArithmeticByteTarget::L => self.registers.l = new_value,
-            ArithmeticByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), new_value),
+            ArithmeticByteTarget::HLI => bus.write_byte(self.registers.get_hl(), new_value),
         }
 
         self.pc.wrapping_add(pc_inc)
     }
 
-    fn xor_instr(&mut self, target: XORTargetType) -> u16 {
+    fn xor_instr(&mut self, target: XORTargetType, bus: &MemoryBus) -> u16 {
         match target {
             XORTargetType::A => {
                 self.registers.a = self.xor(self.registers.a);
@@ -1287,11 +1265,11 @@ impl CPU {
                 self.pc.wrapping_add(1)
             }
             XORTargetType::HLI => {
-                self.registers.a = self.xor(self.bus.read_byte(self.registers.get_hl()));
+                self.registers.a = self.xor(bus.read_byte(self.registers.get_hl()));
                 self.pc.wrapping_add(2)
             }
             XORTargetType::D8 => {
-                let d8 = self.read_next_byte();
+                let d8 = self.read_next_byte(bus);
                 self.registers.a = self.xor(d8);
                 self.pc.wrapping_add(2)
             }
@@ -1408,12 +1386,12 @@ impl CPU {
         new_value
     }
 
-    fn jump(&self, should_jump: bool) -> u16 {
+    fn jump(&self, should_jump: bool, bus: &MemoryBus) -> u16 {
         if should_jump {
             // Gameboy is little endian so read pc + 2 as most significant bit
             // and pc + 1 as least significant bit
-            let least_significant_byte = self.bus.read_byte(self.pc + 1) as u16;
-            let most_significant_byte = self.bus.read_byte(self.pc + 2) as u16;
+            let least_significant_byte = bus.read_byte(self.pc + 1) as u16;
+            let most_significant_byte = bus.read_byte(self.pc + 2) as u16;
             (most_significant_byte << 8) | least_significant_byte
         } else {
             // If we don't jump we need to still move the program
@@ -1423,19 +1401,19 @@ impl CPU {
         }
     }
 
-    fn push(&mut self, value: u16) {
+    fn push(&mut self, value: u16, bus: &mut MemoryBus) {
         self.sp = self.sp.wrapping_sub(1);
-        self.bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
+        bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
 
         self.sp = self.sp.wrapping_sub(1);
-        self.bus.write_byte(self.sp, (value & 0xFF) as u8);
+        bus.write_byte(self.sp, (value & 0xFF) as u8);
     }
 
-    fn pop(&mut self) -> u16 {
-        let lsb = self.bus.read_byte(self.sp);
+    fn pop(&mut self, bus: &MemoryBus) -> u16 {
+        let lsb = bus.read_byte(self.sp);
         self.sp = self.sp.wrapping_add(1);
 
-        let msb = self.bus.read_byte(self.sp);
+        let msb = bus.read_byte(self.sp);
         self.sp = self.sp.wrapping_add(1);
 
         (msb as u16) << 8 | (lsb as u16)
@@ -1451,31 +1429,31 @@ impl CPU {
         }
     }
 
-    fn call(&mut self, should_jump: bool) -> u16 {
+    fn call(&mut self, should_jump: bool, bus: &mut MemoryBus) -> u16 {
         if should_jump {
-            self.push(self.pc.wrapping_add(1));
+            self.push(self.pc.wrapping_add(1), bus);
 
-            self.read_next_word()
+            self.read_next_word(bus)
         } else {
             self.pc.wrapping_add(3)
         }
     }
 
-    fn _return(&mut self, should_jump: bool) -> u16 {
+    fn _return(&mut self, should_jump: bool, bus: &mut MemoryBus) -> u16 {
         if should_jump {
-            self.pop()
+            self.pop(bus)
         } else {
             self.pc.wrapping_add(1)
         }
     }
 
-    fn read_next_byte(&mut self) -> u8 {
-        self.bus.read_byte(self.pc.wrapping_add(1))
+    fn read_next_byte(&mut self, bus: &MemoryBus) -> u8 {
+        bus.read_byte(self.pc.wrapping_add(1))
     }
 
-    fn read_next_word(&mut self) -> u16 {
-        let lsp = self.bus.read_byte(self.pc.wrapping_add(1)) as u16;
-        let msp = self.bus.read_byte(self.pc.wrapping_add(2)) as u16;
+    fn read_next_word(&mut self, bus: &MemoryBus) -> u16 {
+        let lsp = bus.read_byte(self.pc.wrapping_add(1)) as u16;
+        let msp = bus.read_byte(self.pc.wrapping_add(2)) as u16;
 
         msp << 8 | lsp
     }
@@ -1499,6 +1477,8 @@ impl CPU {
 mod tests {
     use test_case::test_matrix;
 
+    use crate::memory::MemoryBus;
+
     use super::{Instruction, CPU};
 
     #[test_matrix(
@@ -1517,7 +1497,8 @@ mod tests {
         let instruction = Instruction::from_byte(opcode, prefixed).unwrap();
 
         let mut cpu = CPU::new_and_empty();
+        let mut bus = MemoryBus::new_and_empty();
 
-        cpu.execute(instruction);
+        cpu.execute(instruction, &mut bus);
     }
 }

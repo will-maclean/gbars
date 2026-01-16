@@ -110,6 +110,12 @@ impl PPU {
     // Speed M-cycle, and 2 per Double Speed M-cycle.
     pub fn step(&mut self, memory: &mut MemoryBus) -> bool {
         self.update_scan_registers(memory);
+        // println!(
+        //     "PPU Mode: {:?}, LY={}",
+        //     self.mode,
+        //     memory.read_byte(DisplayRegisters::LY.get_address() as u16)
+        // );
+
         true
     }
 

@@ -1,6 +1,4 @@
-use ggez::{Context, GameError, GameResult};
-
-use crate::{cpu::CPU, display::GbDisplay, ppu::PPU};
+use crate::{cpu::CPU, memory::MemoryBus, ppu::PPU};
 
 // const CLOCK_SPEED_MHz: f32 = 4.194304;
 // const CPU_INSTRUCTION_MHz: f32 = CLOCK_SPEED_MHz / 4.0;
@@ -8,21 +6,34 @@ use crate::{cpu::CPU, display::GbDisplay, ppu::PPU};
 
 pub struct Gameboy {
     //TODO: set as private once proper control is implemented
-    pub cpu: CPU,
-    pub display: GbDisplay,
+    bus: MemoryBus,
+    cpu: CPU,
+    // pub display: GbDisplay,
     ppu: PPU,
 
-    dt: std::time::Duration,
+    // dt: std::time::Duration,
     running: bool,
 }
 
 impl Gameboy {
+    pub fn new(debug_mode: bool) -> Self {
+        Self {
+            bus: MemoryBus::new_and_load_bios(),
+            cpu: CPU::new(debug_mode),
+            // display: GbDisplay::new(),
+            running: false,
+            // dt: std::time::Duration::new(0, 0),
+            ppu: PPU::new(),
+        }
+    }
+
     pub fn new_and_empty(debug_mode: bool) -> Self {
         Self {
+            bus: MemoryBus::new_and_empty(),
             cpu: CPU::new(debug_mode),
-            display: GbDisplay::new(),
+            // display: GbDisplay::new(),
             running: false,
-            dt: std::time::Duration::new(0, 0),
+            // dt: std::time::Duration::new(0, 0),
             ppu: PPU::new(),
         }
     }
@@ -35,29 +46,27 @@ impl Gameboy {
     }
 
     pub fn load_cartridge(&mut self, path: &str) {
-        self.cpu.load_cartridge(path);
+        self.bus.load_cartridge(path);
     }
 
     fn run(&mut self) {
         let mut cpu_ticker = 0;
-        let m_ticks_per_cpu_step = 4;
+        let m_ticks_per_cpu_step = 4; // or 2 if in cpu double speed mode
 
-        let mut ppu_ticker = 0;
-        let m_ticks_per_ppu_step = 1;
-
-        let mut running = true;
-        while running {
+        while self.running {
             // each loop represents a single tick of the Master clock, or M tick
 
-            if cpu_ticker > m_ticks_per_cpu_step {
+            if cpu_ticker >= m_ticks_per_cpu_step {
                 cpu_ticker = 0;
-                running &= self.cpu.step();
+                self.running &= self.cpu.step(&mut self.bus);
             }
+            cpu_ticker += 1;
 
-            if ppu_ticker > m_ticks_per_ppu_step {
-                ppu_ticker = 0;
-                running &= self.ppu.step();
-            }
+            self.running &= self.ppu.step(&mut self.bus);
+
+            // if !self.bus.boot_mode_active() {
+            //     panic!("ROM finished")
+            // }
         }
     }
 }
