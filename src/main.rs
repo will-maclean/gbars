@@ -3,6 +3,7 @@ pub mod display;
 pub mod gameboy;
 pub mod instructions;
 pub mod memory;
+pub mod ppu;
 pub mod registers;
 
 use std::{fs, path::Path};
@@ -18,10 +19,9 @@ pub fn main() {
 }
 
 pub fn create_and_run(cartridge_path: &str) {
-    let mut gb = Gameboy::new_and_empty(true);
-    gb.load_cartridge(cartridge_path);
+    let mut gb = Gameboy::new(false);
+    gb.load_cartridge("resources/Pokemon - Yellow Version (UE) [C][!].gbc");
     gb.boot();
-    gb.run();
 }
 
 pub fn decode_file<P: AsRef<Path> + std::fmt::Debug + Copy>(path: P) {
@@ -69,6 +69,5 @@ mod tests {
         let mut gb = Gameboy::new_and_empty(true);
         gb.load_cartridge("resources/cpu_instrs.gb");
         gb.boot();
-        gb.run();
     }
 }

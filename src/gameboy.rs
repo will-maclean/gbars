@@ -1,6 +1,4 @@
-use ggez::{Context, GameError, GameResult};
-
-use crate::{cpu::CPU, display::GbDisplay};
+use crate::{cpu::CPU, memory::MemoryBus, ppu::PPU};
 
 // const CLOCK_SPEED_MHz: f32 = 4.194304;
 // const CPU_INSTRUCTION_MHz: f32 = CLOCK_SPEED_MHz / 4.0;
@@ -8,56 +6,67 @@ use crate::{cpu::CPU, display::GbDisplay};
 
 pub struct Gameboy {
     //TODO: set as private once proper control is implemented
-    pub cpu: CPU,
-    pub display: GbDisplay,
+    bus: MemoryBus,
+    cpu: CPU,
+    // pub display: GbDisplay,
+    ppu: PPU,
 
-    dt: std::time::Duration,
+    // dt: std::time::Duration,
     running: bool,
 }
 
 impl Gameboy {
-    pub fn new_and_empty(debug: bool) -> Self {
+    pub fn new(debug_mode: bool) -> Self {
         Self {
-            cpu: CPU::new(debug),
-            display: GbDisplay::new(),
+            bus: MemoryBus::new_and_load_bios(),
+            cpu: CPU::new(debug_mode),
+            // display: GbDisplay::new(),
             running: false,
-            dt: std::time::Duration::new(0, 0),
+            // dt: std::time::Duration::new(0, 0),
+            ppu: PPU::new(),
+        }
+    }
+
+    pub fn new_and_empty(debug_mode: bool) -> Self {
+        Self {
+            bus: MemoryBus::new_and_empty(),
+            cpu: CPU::new(debug_mode),
+            // display: GbDisplay::new(),
+            running: false,
+            // dt: std::time::Duration::new(0, 0),
+            ppu: PPU::new(),
         }
     }
 
     pub fn boot(&mut self) {
         self.running = true;
         self.cpu.reset();
-        // self.run();
+
+        self.run();
     }
 
     pub fn load_cartridge(&mut self, path: &str) {
-        self.cpu.load_cartridge(path);
+        self.bus.load_cartridge(path);
     }
 
-    pub fn run(&mut self) {
+    fn run(&mut self) {
+        let mut cpu_ticker = 0;
+        let m_ticks_per_cpu_step = 4; // or 2 if in cpu double speed mode
+
         while self.running {
-            self.cpu.step();
+            // each loop represents a single tick of the Master clock, or M tick
+
+            if cpu_ticker >= m_ticks_per_cpu_step {
+                cpu_ticker = 0;
+                self.running &= self.cpu.step(&mut self.bus);
+            }
+            cpu_ticker += 1;
+
+            self.running &= self.ppu.step(&mut self.bus);
+
+            // if !self.bus.boot_mode_active() {
+            //     panic!("ROM finished")
+            // }
         }
-    }
-}
-
-impl ggez::event::EventHandler<GameError> for Gameboy {
-    fn update(&mut self, ctx: &mut Context) -> GameResult {
-        self.dt = ctx.time.delta();
-
-        Ok(())
-    }
-    fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        println!(
-            "Hello ggez! dt = {}ns, FPS={}",
-            self.dt.as_nanos(),
-            1.0 / self.dt.as_secs_f32()
-        );
-        println!("screen size: {:?}", ctx.gfx.size());
-
-        let _ = self.display.render(ctx, &mut self.cpu);
-
-        Ok(())
     }
 }
