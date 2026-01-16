@@ -9,6 +9,18 @@ const VRAM_BEGIN: u16 = 0x8000;
 const VRAM_END: u16 = 0x9FFF;
 const VRAM_SIZE: u16 = VRAM_END - VRAM_BEGIN + 1;
 
+pub enum GeneralRegisters {
+    IE,
+}
+
+impl GeneralRegisters {
+    pub fn get_address(&self) -> u16 {
+        match self {
+            GeneralRegisters::IE => 0xFFFF,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum MemoryRegion {
     BootROM,

@@ -193,7 +193,7 @@ pub enum ORTargetType {
     D8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Instruction {
     ADC(AdcTargetType),
     ADD(AddTargetType),
@@ -838,6 +838,162 @@ impl Instruction {
             0xFD => Some(Instruction::SET(BitPosition::Seven, BitRegister::L)),
             0xFE => Some(Instruction::SET(BitPosition::Seven, BitRegister::HLI)),
             0xFF => Some(Instruction::SET(BitPosition::Seven, BitRegister::A)),
+        }
+    }
+
+    pub fn wait_ticks(&self) -> usize {
+        match self {
+            Instruction::ADC(adc_target_type) => match adc_target_type {
+                AdcTargetType::HLI => 2,
+                AdcTargetType::D8 => 2,
+                _ => 1,
+            },
+            Instruction::ADD(add_target_type) => match add_target_type {
+                AddTargetType::Byte(add_byte_target) => match add_byte_target {
+                    AddByteTarget::HLI => 2,
+                    _ => 1,
+                },
+                AddTargetType::Word(_) => 2,
+                AddTargetType::SPS8 => 4,
+            },
+            Instruction::AND(and_target_type) => match and_target_type {
+                AndTargetType::D8 => 2,
+                _ => 1,
+            },
+            Instruction::BIT(_, bit_register) => match bit_register {
+                BitRegister::HLI => 3,
+                _ => 2,
+            },
+            Instruction::CALL(_) => 6,
+            Instruction::CCF => 1,
+            Instruction::CP(cpbyte_target) => match cpbyte_target {
+                CPByteTarget::HLI => 2,
+                CPByteTarget::D8 => 2,
+                _ => 1,
+            },
+            Instruction::CPL => 1,
+            Instruction::DAA => 1,
+            Instruction::DEC(arithmetic_target_type) => match arithmetic_target_type {
+                ArithmeticTargetType::Byte(arithmetic_byte_target) => {
+                    match arithmetic_byte_target {
+                        ArithmeticByteTarget::HLI => 3,
+                        _ => 1,
+                    }
+                }
+                ArithmeticTargetType::Word(_) => 2,
+            },
+            Instruction::EI => 1,
+            Instruction::HALT => 1,
+            Instruction::INC(arithmetic_target_type) => match arithmetic_target_type {
+                ArithmeticTargetType::Byte(arithmetic_byte_target) => {
+                    match arithmetic_byte_target {
+                        ArithmeticByteTarget::HLI => 3,
+                        _ => 1,
+                    }
+                }
+                ArithmeticTargetType::Word(_) => 2,
+            },
+            Instruction::JP(_, jp_addr_loc) => match jp_addr_loc {
+                JpAddrLoc::A16 => 4,
+                JpAddrLoc::HL => 1,
+            },
+            Instruction::JR(_) => 3,
+            Instruction::LD(load_type) => match load_type {
+                LoadType::Byte(load_byte_target, load_byte_source) => {
+                    match (load_byte_target, load_byte_source) {
+                        (LoadByteTarget::HLI, _) => 2,
+                        (_, LoadByteSource::HLI) => 2,
+                        _ => 1,
+                    }
+                }
+                LoadType::Word(load_word_target, load_word_source) => {
+                    //TODO: is this entirely correct?
+                    match (load_word_target, load_word_source) {
+                        _ => 3,
+                    }
+                }
+                LoadType::AFromIndirect(_) => 3,
+                LoadType::IndirectFromA(_) => 3,
+                LoadType::AFromByteAddress(_) => 4,
+                LoadType::ByteAddressFromA(_) => 4,
+                LoadType::AIntoHLInc => 2,
+                LoadType::AIntoHLDec => 2,
+                LoadType::HLIncIntoA => 2,
+                LoadType::HLDecIntoA => 2,
+            },
+            Instruction::NOP => 1,
+            Instruction::OR(ortarget_type) => match ortarget_type {
+                ORTargetType::HLI => 2,
+                ORTargetType::D8 => 2,
+                _ => 1,
+            },
+            Instruction::POP(_) => 3,
+            Instruction::PUSH(_) => 4,
+            Instruction::RES(_, bit_register) => match bit_register {
+                BitRegister::HLI => 4,
+                _ => 2,
+            },
+            Instruction::RET(jump_test) => match jump_test {
+                JumpTest::Always => 4,
+                _ => 5,
+            },
+            Instruction::RETI => 4,
+            Instruction::RL(arithmetic_byte_target) => match arithmetic_byte_target {
+                ArithmeticByteTarget::HLI => 4,
+                _ => 2,
+            },
+            Instruction::RLA => 1,
+            Instruction::RR(arithmetic_byte_target) => match arithmetic_byte_target {
+                ArithmeticByteTarget::HLI => 4,
+                _ => 2,
+            },
+            Instruction::RRA => 1,
+            Instruction::RLC(arithmetic_byte_target) => match arithmetic_byte_target {
+                ArithmeticByteTarget::HLI => 4,
+                _ => 2,
+            },
+            Instruction::RRC(arithmetic_byte_target) => match arithmetic_byte_target {
+                ArithmeticByteTarget::HLI => 4,
+                _ => 2,
+            },
+            Instruction::RST(_) => 4,
+            Instruction::SBC(sbcbyte_target) => match sbcbyte_target {
+                SBCByteTarget::HLI => 2,
+                SBCByteTarget::D8 => 2,
+                _ => 1,
+            },
+            Instruction::SCF => 1,
+            Instruction::SET(_, bit_register) => match bit_register {
+                BitRegister::HLI => 4,
+                _ => 2,
+            },
+            Instruction::SLA(arithmetic_byte_target) => match arithmetic_byte_target {
+                ArithmeticByteTarget::HLI => 4,
+                _ => 2,
+            },
+            Instruction::SRA(arithmetic_byte_target) => match arithmetic_byte_target {
+                ArithmeticByteTarget::HLI => 4,
+                _ => 2,
+            },
+            Instruction::SRL(arithmetic_byte_target) => match arithmetic_byte_target {
+                ArithmeticByteTarget::HLI => 4,
+                _ => 2,
+            },
+            Instruction::STOP => 1,
+            Instruction::SUB(sub_byte_target) => match sub_byte_target {
+                SubByteTarget::HLI => 2,
+                SubByteTarget::D8 => 2,
+                _ => 1,
+            },
+            Instruction::SWAP(arithmetic_byte_target) => match arithmetic_byte_target {
+                ArithmeticByteTarget::HLI => 4,
+                _ => 2,
+            },
+            Instruction::XOR(xortarget_type) => match xortarget_type {
+                XORTargetType::HLI => 2,
+                XORTargetType::D8 => 2,
+                _ => 1,
+            },
         }
     }
 }

@@ -20,7 +20,7 @@ pub fn main() {
 
 pub fn create_and_run(cartridge_path: &str) {
     let mut gb = Gameboy::new(false);
-    gb.load_cartridge("resources/Pokemon - Yellow Version (UE) [C][!].gbc");
+    gb.load_cartridge(cartridge_path);
     gb.boot();
 }
 
