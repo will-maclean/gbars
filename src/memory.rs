@@ -1,6 +1,9 @@
 use std::fs;
 
-use crate::ppu::PPUMode;
+use crate::{
+    cartridge::{Cartridge, MBC1Cartridge},
+    ppu::PPUMode,
+};
 
 const BOOT_ROM_LOCK_REGISTER: u16 = 0xFF50;
 const BOOT_ROM_BIN_PATH: &'static str = "resources/dmg_boot.bin";
@@ -67,7 +70,7 @@ impl MemoryRegion {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MemoryBus {
     // Memory Map
     //
@@ -101,21 +104,23 @@ pub struct MemoryBus {
     memory: [u8; 0x10000],
 
     // gpu: GPU,
-    cartridge: Vec<u8>,
+    _cartridge: Vec<u8>,
+    cartridge: Box<dyn Cartridge>,
 }
 
 impl MemoryBus {
-    pub fn new_and_empty() -> Self {
+    pub fn new_and_empty(cartridge: Option<Box<dyn Cartridge>>) -> Self {
         Self {
             boot_rom: [0; 0x100],
             memory: [0; 0x10000],
-            cartridge: Default::default(),
+            _cartridge: Default::default(),
             // gpu: GPU::new(),
+            cartridge: cartridge.unwrap_or_else(|| Box::new(MBC1Cartridge::new_and_empty())),
         }
     }
 
-    pub fn new_and_load_bios() -> Self {
-        let mut bus = Self::new_and_empty();
+    pub fn new_and_load_bios(cartridge: Option<Box<dyn Cartridge>>) -> Self {
+        let mut bus = Self::new_and_empty(cartridge);
         let read_res = fs::read(BOOT_ROM_BIN_PATH);
 
         match read_res {
@@ -132,23 +137,6 @@ impl MemoryBus {
         bus
     }
 
-    pub fn load_cartridge(&mut self, load_pth: &str) {
-        let read_res = fs::read(load_pth);
-
-        match read_res {
-            Ok(data) => {
-                self.cartridge = data;
-
-                // load bank 0
-                for i in 0..0x4000 {
-                    self.memory[i] = self.cartridge[i];
-                }
-
-                //TODO: handle different memory banks
-            }
-            Err(_) => panic!("Failed to load cartridge at {}", load_pth),
-        };
-    }
     pub fn read_byte(&self, address: u16) -> u8 {
         let booting = self.memory[BOOT_ROM_LOCK_REGISTER as usize] & 1 == 0;
 
@@ -163,6 +151,11 @@ impl MemoryBus {
                 }
             }
             // MemoryRegion::TileRAM => self.gpu.read_vram((address - VRAM_BEGIN) as usize),
+
+            // Handle sections that go to the cartridge
+            MemoryRegion::GameROMBank0
+            | MemoryRegion::GameROMBankN
+            | MemoryRegion::CartridgeRAM => self.cartridge.read_byte(address),
             _ => self.memory[address as usize],
         }
     }
@@ -175,10 +168,15 @@ impl MemoryBus {
 
         match region {
             // boot rom cannot be written to
-            MemoryRegion::BootROM | MemoryRegion::GameROMBank0 | MemoryRegion::GameROMBankN => {}
+            MemoryRegion::BootROM => {}
 
             // graphics RAM should be handled by the PGU
             // MemoryRegion::TileRAM => self.gpu.write_vram(address - VRAM_BEGIN, value),
+
+            // Handle sections that go to the cartridge
+            MemoryRegion::GameROMBank0
+            | MemoryRegion::GameROMBankN
+            | MemoryRegion::CartridgeRAM => self.cartridge.write_byte(address, value),
 
             // everything else can be written as usual
             _ => self.memory[address as usize] = value,
@@ -198,7 +196,7 @@ impl MemoryBus {
         let new_val = (curr_val + 1) % wrapping_val;
         self.write_byte(address, new_val);
 
-        new_val
+        self.read_byte(address)
     }
 
     pub fn update_ppu_lock(&mut self, _ppu_mode: PPUMode) {}

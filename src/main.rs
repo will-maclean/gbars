@@ -1,3 +1,4 @@
+pub mod cartridge;
 pub mod cpu;
 pub mod display;
 pub mod gameboy;
@@ -6,21 +7,22 @@ pub mod memory;
 pub mod ppu;
 pub mod registers;
 
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use gameboy::Gameboy;
 
-use crate::instructions::Instruction;
-// use ggez::{conf, event, ContextBuilder};
+use crate::{cartridge::CartridgeType, instructions::Instruction};
 
 pub fn main() {
     // decode_file("resources/dmg_boot.bin");
-    create_and_run("resources/game.gb");
+    create_and_run(&PathBuf::from("resources/game.gb"));
 }
 
-pub fn create_and_run(cartridge_path: &str) {
-    let mut gb = Gameboy::new(false);
-    gb.load_cartridge(cartridge_path);
+pub fn create_and_run(cartridge_path: &Path) {
+    let mut gb = Gameboy::new(false, cartridge_path, CartridgeType::MBC1);
     gb.boot();
 }
 
@@ -62,12 +64,17 @@ pub fn decode_file<P: AsRef<Path> + std::fmt::Debug + Copy>(path: P) {
 
 #[cfg(test)]
 mod tests {
-    use crate::gameboy::Gameboy;
+    use std::path::PathBuf;
+
+    use crate::{cartridge::CartridgeType, gameboy::Gameboy};
 
     #[test]
     fn test_roms() {
-        let mut gb = Gameboy::new_and_empty(true);
-        gb.load_cartridge("resources/cpu_instrs.gb");
+        let mut gb = Gameboy::new(
+            true,
+            &PathBuf::from("resources/cpu_instrs.gb"),
+            CartridgeType::Basic,
+        );
         gb.boot();
     }
 }

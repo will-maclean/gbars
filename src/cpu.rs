@@ -1530,7 +1530,7 @@ mod tests {
         let instruction = Instruction::from_byte(opcode, prefixed).unwrap();
 
         let mut cpu = CPU::new_and_empty();
-        let mut bus = MemoryBus::new_and_empty();
+        let mut bus = MemoryBus::new_and_empty(None);
 
         cpu.execute(instruction, &mut bus);
     }
