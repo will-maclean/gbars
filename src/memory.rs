@@ -5,10 +5,6 @@ use crate::ppu::PPUMode;
 const BOOT_ROM_LOCK_REGISTER: u16 = 0xFF50;
 const BOOT_ROM_BIN_PATH: &'static str = "resources/dmg_boot.bin";
 
-const VRAM_BEGIN: u16 = 0x8000;
-const VRAM_END: u16 = 0x9FFF;
-const VRAM_SIZE: u16 = VRAM_END - VRAM_BEGIN + 1;
-
 pub enum GeneralRegisters {
     IE,
 }
@@ -40,29 +36,29 @@ pub enum MemoryRegion {
 
 impl MemoryRegion {
     pub fn from_addr(addr: u16, is_booting: bool) -> Self {
-        if addr < 0x00FF && is_booting {
+        if addr <= 0x00FF && is_booting {
             MemoryRegion::BootROM
-        } else if addr < 0x00FF {
+        } else if addr <= 0x00FF {
             MemoryRegion::GameROMBank0
-        } else if addr < 0x7FFF {
+        } else if addr <= 0x7FFF {
             MemoryRegion::GameROMBankN
-        } else if addr < 0x97FF {
+        } else if addr <= 0x97FF {
             MemoryRegion::TileRAM
-        } else if addr < 0x9FFF {
+        } else if addr <= 0x9FFF {
             MemoryRegion::BackgroundMap
-        } else if addr < 0xBFFF {
+        } else if addr <= 0xBFFF {
             MemoryRegion::CartridgeRAM
-        } else if addr < 0xDFFF {
+        } else if addr <= 0xDFFF {
             MemoryRegion::WorkingRAM
-        } else if addr < 0xFDFF {
+        } else if addr <= 0xFDFF {
             MemoryRegion::EchoRAM
-        } else if addr < 0xFE9F {
+        } else if addr <= 0xFE9F {
             MemoryRegion::OAM
-        } else if addr < 0xFEFF {
+        } else if addr <= 0xFEFF {
             MemoryRegion::Unused
-        } else if addr < 0xFF7F {
+        } else if addr <= 0xFF7F {
             MemoryRegion::IO
-        } else if addr < 0xFFFE {
+        } else if addr <= 0xFFFE {
             MemoryRegion::HighRAM
         } else {
             MemoryRegion::InterruptEnabledRegister
@@ -205,7 +201,7 @@ impl MemoryBus {
         new_val
     }
 
-    pub fn update_ppu_lock(&mut self, ppu_mode: PPUMode) {}
+    pub fn update_ppu_lock(&mut self, _ppu_mode: PPUMode) {}
 }
 
 // #[derive(Debug, Copy, Clone)]

@@ -10,8 +10,6 @@ use crate::instructions::{
 use crate::memory::{GeneralRegisters, MemoryBus};
 use crate::registers::Registers;
 
-// const CLOCK_SPEED_MHz: f32 = 4.194304;
-
 #[derive(Debug, Clone)]
 pub struct CPU {
     registers: Registers,
@@ -55,7 +53,7 @@ impl CPU {
     }
 
     pub fn step(&mut self, bus: &mut MemoryBus) -> bool {
-        if self.wait_ticks >= 1 {
+        if self.wait_ticks > 1 {
             self.wait_ticks -= 1;
             return true;
         }
@@ -71,40 +69,62 @@ impl CPU {
                 instruction_byte = bus.read_byte(self.pc + 1);
             }
 
-            let new_instr = Instruction::from_byte(instruction_byte, prefix).unwrap();
-            let wait_ticks = new_instr.wait_ticks();
+            if self.debug_view {
+                println!(
+                    "\n\n{}: Parsing instruction: 0x{}{:x}. pc=0x{:x} (boot mode active: {})\n{:?}\nsp=0x{:x}",
+                    self.instruction_counter,
+                    if prefix { "cb" } else { "" },
+                    instruction_byte,
+                    self.pc,
+                    bus.boot_mode_active(),
+                    self.registers,
+                    self.sp
+                );
+            }
 
-            if wait_ticks > 1 {
-                self.wait_ticks = wait_ticks - 1;
-                self.wait_instr = Some(new_instr);
+            if let Some(new_instr) = Instruction::from_byte(instruction_byte, prefix) {
+                let wait_ticks = new_instr.wait_ticks();
+
+                if wait_ticks > 1 {
+                    self.wait_ticks = wait_ticks - 1;
+                    self.wait_instr = Some(new_instr);
+                } else {
+                    self.wait_ticks = 0;
+                    self.execute_outer(new_instr, bus);
+                }
             } else {
-                self.wait_ticks = 0;
-                self.execute_outer(new_instr, bus);
+                panic!(
+                    "\n\n{}: ERROR: UNKNOWN INSTRUCTION! Parsing instruction: 0x{}{:x}. pc=0x{:x} (boot mode active: {})\n{:?}\nsp=0x{:x}",
+                    self.instruction_counter,
+                    if prefix { "cb" } else { "" },
+                    instruction_byte,
+                    self.pc,
+                    bus.boot_mode_active(),
+                    self.registers,
+                    self.sp
+                )
             }
         }
 
-        // if self.pc == 0xfe {
-        //     panic!("disabling boot rom!! made it");
-        // }
-
-        // if self.pc > 0xa7 {
-        //     panic!("pc is very high... pc=0x{:x}", self.pc);
-        // }
+        if self.pc == 0xfe {
+            println!("disabling boot rom, starting game...");
+            // self.debug_view = true;
+        }
 
         true
     }
 
     fn execute_outer(&mut self, instruction: Instruction, bus: &mut MemoryBus) {
-        if self.debug_view {
-            println!(
-                "\n\n{}: Executing instruction: pc=0x{:x} (boot mode active: {})\n{:?}\nsp=0x{:x}",
-                self.instruction_counter,
-                self.pc,
-                bus.boot_mode_active(),
-                self.registers,
-                self.sp
-            )
-        }
+        // if self.debug_view {
+        //     println!(
+        //         "\n\n{}: Executing instruction: pc=0x{:x} (boot mode active: {})\n{:?}\nsp=0x{:x}",
+        //         self.instruction_counter,
+        //         self.pc,
+        //         bus.boot_mode_active(),
+        //         self.registers,
+        //         self.sp
+        //     )
+        // }
         self.pc = self.execute(instruction, bus);
         self.instruction_counter += 1;
     }
@@ -115,52 +135,10 @@ impl CPU {
         }
 
         match instruction {
-            Instruction::ADC(target) => {
-                let (val, pc_inc) = match target {
-                    AdcTargetType::A => (self.registers.a, 1),
-                    AdcTargetType::B => (self.registers.b, 1),
-                    AdcTargetType::C => (self.registers.c, 1),
-                    AdcTargetType::D => (self.registers.d, 1),
-                    AdcTargetType::E => (self.registers.e, 1),
-                    AdcTargetType::H => (self.registers.h, 1),
-                    AdcTargetType::L => (self.registers.l, 1),
-                    AdcTargetType::HLI => (bus.read_byte(self.registers.get_hl()), 1),
-                    AdcTargetType::D8 => (self.read_next_byte(bus), 2),
-                };
-
-                self.registers.a = self.add_byte(val + (self.registers.f.carry as u8));
-
-                self.pc.wrapping_add(pc_inc)
-            }
+            Instruction::ADC(target) => self.adc_instr(target, bus),
             Instruction::ADD(add_type) => self.add_instr(add_type, bus),
             Instruction::AND(target) => self.and_instr(target, bus),
-            Instruction::BIT(position, register) => {
-                let and_val: u8 = match position {
-                    BitPosition::Zero => 1,
-                    BitPosition::One => 2,
-                    BitPosition::Two => 4,
-                    BitPosition::Three => 8,
-                    BitPosition::Four => 16,
-                    BitPosition::Five => 32,
-                    BitPosition::Six => 64,
-                    BitPosition::Seven => 128,
-                };
-
-                let (flag_val, pc_inc) = match register {
-                    BitRegister::B => ((self.registers.b & and_val) > 0, 2),
-                    BitRegister::C => ((self.registers.c & and_val) > 0, 2),
-                    BitRegister::D => ((self.registers.d & and_val) > 0, 2),
-                    BitRegister::E => ((self.registers.e & and_val) > 0, 2),
-                    BitRegister::H => ((self.registers.h & and_val) > 0, 2),
-                    BitRegister::L => ((self.registers.l & and_val) > 0, 2),
-                    BitRegister::HLI => ((bus.read_byte(self.registers.get_hl()) & and_val) > 0, 2),
-                    BitRegister::A => ((self.registers.a & and_val) > 0, 2),
-                };
-
-                self.registers.f.zero = flag_val;
-
-                self.pc.wrapping_add(pc_inc)
-            }
+            Instruction::BIT(position, register) => self.bit_instr(position, register, bus),
             Instruction::CALL(test) => {
                 let should_jump = self.jmp_test(test);
                 let new_pc = self.call(should_jump, bus);
@@ -197,7 +175,7 @@ impl CPU {
                 };
 
                 // we don't actually care about the result, so we can discard it
-                self.sub(value);
+                let _ = self.sub(value);
 
                 self.pc.wrapping_add(pc_inc)
             }
@@ -809,7 +787,7 @@ impl CPU {
         }
     }
 
-    fn daa(&mut self, bus: &mut MemoryBus) -> u16 {
+    fn daa(&mut self, _bus: &mut MemoryBus) -> u16 {
         todo!()
     }
 
@@ -988,63 +966,22 @@ impl CPU {
 
     fn add_instr(&mut self, add_type: AddTargetType, bus: &mut MemoryBus) -> u16 {
         match add_type {
-            AddTargetType::Byte(target) => match target {
-                AddByteTarget::A => {
-                    let value = self.registers.a;
-                    let new_value = self.add_byte(value);
-                    self.registers.a = new_value;
-                    self.pc.wrapping_add(1)
-                }
-                AddByteTarget::B => {
-                    let value = self.registers.b;
-                    let new_value = self.add_byte(value);
-                    self.registers.a = new_value;
-                    self.pc.wrapping_add(1)
-                }
-                AddByteTarget::C => {
-                    let value = self.registers.c;
-                    let new_value = self.add_byte(value);
-                    self.registers.a = new_value;
-                    self.pc.wrapping_add(1)
-                }
-                AddByteTarget::D => {
-                    let value = self.registers.d;
-                    let new_value = self.add_byte(value);
-                    self.registers.a = new_value;
-                    self.pc.wrapping_add(1)
-                }
-                AddByteTarget::E => {
-                    let value = self.registers.e;
-                    let new_value = self.add_byte(value);
-                    self.registers.a = new_value;
-                    self.pc.wrapping_add(1)
-                }
-                AddByteTarget::H => {
-                    let value = self.registers.h;
-                    let new_value = self.add_byte(value);
-                    self.registers.a = new_value;
-                    self.pc.wrapping_add(1)
-                }
-                AddByteTarget::L => {
-                    let value = self.registers.l;
-                    let new_value = self.add_byte(value);
-                    self.registers.a = new_value;
-                    self.pc.wrapping_add(1)
-                }
-                AddByteTarget::HLI => {
-                    let value = bus.read_byte(self.registers.get_hl());
-                    let new_value = self.add_byte(value);
-                    self.registers.a = new_value;
-                    self.pc.wrapping_add(2)
-                }
-                AddByteTarget::D8 => {
-                    let d8 = self.read_next_byte(bus);
-                    let new_value = self.add_byte(d8);
-                    self.registers.a = new_value;
-
-                    self.pc.wrapping_add(2)
-                }
-            },
+            AddTargetType::Byte(target) => {
+                let (val, pc_inc) = match target {
+                    AddByteTarget::A => (self.registers.a, 1),
+                    AddByteTarget::B => (self.registers.b, 1),
+                    AddByteTarget::C => (self.registers.c, 1),
+                    AddByteTarget::D => (self.registers.d, 1),
+                    AddByteTarget::E => (self.registers.e, 1),
+                    AddByteTarget::H => (self.registers.h, 1),
+                    AddByteTarget::L => (self.registers.l, 1),
+                    AddByteTarget::HLI => (bus.read_byte(self.registers.get_hl()), 1),
+                    AddByteTarget::D8 => (self.read_next_byte(bus), 2),
+                };
+                let new_value = self.add_byte(val);
+                self.registers.a = new_value;
+                self.pc.wrapping_add(pc_inc)
+            }
             AddTargetType::Word(target) => {
                 let value = match target {
                     ArithmeticWordTarget::BC => self.registers.get_bc(),
@@ -1183,9 +1120,10 @@ impl CPU {
 
                 if self.debug_view {
                     println!(
-                        "LD (AFromByteAddress). From source=({:?}),value=0x{:x} to address=A",
-                        ld_byte_address,
-                        bus.read_byte(addr)
+                        "LD (AFromByteAddress). From source=({:?}),value=0x{:x} to address=A. Increment=0x{:x}",
+                        addr,
+                        bus.read_byte(addr),
+                        addr_inc
                     );
                 }
 
@@ -1203,8 +1141,8 @@ impl CPU {
 
                 if self.debug_view {
                     println!(
-                        "LD (ByteAddressFromA). From source=A,value=0x{:x} to address=0x{:x}",
-                        self.registers.a, addr
+                        "LD (ByteAddressFromA). From source=A,value=0x{:x} to address=0x{:x}. inc=0x{:x}. inc source={:?}",
+                        self.registers.a, addr, addr_inc, ld_byte_address,
                     );
                 }
 
@@ -1260,8 +1198,20 @@ impl CPU {
 
                 self.pc.wrapping_add(pc_inc)
             }
-            LoadType::HLIncIntoA => todo!(),
-            LoadType::HLDecIntoA => todo!(),
+            LoadType::HLIncIntoA => {
+                let hl = self.registers.get_hl();
+                self.registers.a = bus.read_byte(hl);
+                self.registers.set_hl(hl + 1);
+
+                self.pc.wrapping_add(1)
+            }
+            LoadType::HLDecIntoA => {
+                let hl = self.registers.get_hl();
+                self.registers.a = bus.read_byte(hl);
+                self.registers.set_hl(hl.wrapping_sub(1));
+
+                self.pc.wrapping_add(1)
+            }
         }
     }
 
@@ -1327,8 +1277,7 @@ impl CPU {
         self.registers.f.subtraction = false;
         self.registers.f.carry = did_overflow;
 
-        //TODO: this seems very wrong
-        self.registers.f.half_carry = (self.registers.a & 0x20) > 0;
+        self.registers.f.half_carry = (self.registers.a & value as u8 & 0x20) > 0;
 
         new_value
     }
@@ -1359,7 +1308,7 @@ impl CPU {
         let new_value = self.registers.a & value;
         self.registers.f.zero = new_value == 0;
         self.registers.f.subtraction = false;
-        self.registers.f.carry = true;
+        self.registers.f.carry = false;
         self.registers.f.half_carry = false;
 
         new_value
@@ -1501,6 +1450,59 @@ impl CPU {
         self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
 
         new_value
+    }
+
+    fn bit_instr(
+        &mut self,
+        position: BitPosition,
+        register: BitRegister,
+        bus: &mut MemoryBus,
+    ) -> u16 {
+        let and_val: u8 = match position {
+            BitPosition::Zero => 1,
+            BitPosition::One => 2,
+            BitPosition::Two => 4,
+            BitPosition::Three => 8,
+            BitPosition::Four => 16,
+            BitPosition::Five => 32,
+            BitPosition::Six => 64,
+            BitPosition::Seven => 128,
+        };
+
+        let flag_val = match register {
+            BitRegister::B => (self.registers.b & and_val) > 0,
+            BitRegister::C => (self.registers.c & and_val) > 0,
+            BitRegister::D => (self.registers.d & and_val) > 0,
+            BitRegister::E => (self.registers.e & and_val) > 0,
+            BitRegister::H => (self.registers.h & and_val) > 0,
+            BitRegister::L => (self.registers.l & and_val) > 0,
+            BitRegister::HLI => (bus.read_byte(self.registers.get_hl()) & and_val) > 0,
+            BitRegister::A => (self.registers.a & and_val) > 0,
+        };
+
+        self.registers.f.zero = flag_val;
+        self.registers.f.subtraction = false;
+        self.registers.f.half_carry = true;
+
+        self.pc.wrapping_add(2)
+    }
+
+    fn adc_instr(&mut self, target: AdcTargetType, bus: &mut MemoryBus) -> u16 {
+        let (val, pc_inc) = match target {
+            AdcTargetType::A => (self.registers.a, 1),
+            AdcTargetType::B => (self.registers.b, 1),
+            AdcTargetType::C => (self.registers.c, 1),
+            AdcTargetType::D => (self.registers.d, 1),
+            AdcTargetType::E => (self.registers.e, 1),
+            AdcTargetType::H => (self.registers.h, 1),
+            AdcTargetType::L => (self.registers.l, 1),
+            AdcTargetType::HLI => (bus.read_byte(self.registers.get_hl()), 1),
+            AdcTargetType::D8 => (self.read_next_byte(bus), 2),
+        };
+
+        self.registers.a = self.add_byte(val + (self.registers.f.carry as u8));
+
+        self.pc.wrapping_add(pc_inc)
     }
 }
 

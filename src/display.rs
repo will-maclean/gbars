@@ -1,12 +1,4 @@
-use ggez::{
-    graphics::{self, Canvas, Color},
-    Context, GameResult,
-};
-
-use crate::{
-    cpu::CPU,
-    ppu::{DisplayRegisters, LCDC},
-};
+use ggez::graphics;
 
 pub const BACKGROUND_WIDTH_PIXELS: usize = 256;
 pub const BACKGROUND_HEIGHT_PIXELS: usize = 256;

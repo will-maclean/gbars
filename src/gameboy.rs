@@ -5,7 +5,6 @@ use crate::{cpu::CPU, memory::MemoryBus, ppu::PPU};
 // const DESIRED_RENDER_FPS: f32 = 30.0; // Can't imagine we'd ever need more than this?
 
 pub struct Gameboy {
-    //TODO: set as private once proper control is implemented
     bus: MemoryBus,
     cpu: CPU,
     // pub display: GbDisplay,
@@ -63,10 +62,6 @@ impl Gameboy {
             cpu_ticker += 1;
 
             self.running &= self.ppu.step(&mut self.bus);
-
-            // if !self.bus.boot_mode_active() {
-            //     panic!("ROM finished")
-            // }
         }
     }
 }
