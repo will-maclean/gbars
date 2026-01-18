@@ -1,11 +1,6 @@
 use std::path::Path;
 
-use crate::{
-    cartridge::{create_cartridge, CartridgeType},
-    cpu::CPU,
-    memory::MemoryBus,
-    ppu::PPU,
-};
+use crate::{cartridge::create_cartridge, cpu::CPU, memory::MemoryBus, ppu::PPU};
 
 // const CLOCK_SPEED_MHz: f32 = 4.194304;
 // const CPU_INSTRUCTION_MHz: f32 = CLOCK_SPEED_MHz / 4.0;
@@ -22,12 +17,9 @@ pub struct Gameboy {
 }
 
 impl Gameboy {
-    pub fn new(debug_mode: bool, cartridge_path: &Path, cartridge_type: CartridgeType) -> Self {
+    pub fn new(debug_mode: bool, cartridge_path: &Path) -> Self {
         Self {
-            bus: MemoryBus::new_and_load_bios(Some(create_cartridge(
-                cartridge_path,
-                cartridge_type,
-            ))),
+            bus: MemoryBus::new_and_load_bios(Some(create_cartridge(cartridge_path))),
             cpu: CPU::new(debug_mode),
             // display: GbDisplay::new(),
             running: false,

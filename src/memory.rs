@@ -104,7 +104,6 @@ pub struct MemoryBus {
     memory: [u8; 0x10000],
 
     // gpu: GPU,
-    _cartridge: Vec<u8>,
     cartridge: Box<dyn Cartridge>,
 }
 
@@ -113,7 +112,6 @@ impl MemoryBus {
         Self {
             boot_rom: [0; 0x100],
             memory: [0; 0x10000],
-            _cartridge: Default::default(),
             // gpu: GPU::new(),
             cartridge: cartridge.unwrap_or_else(|| Box::new(MBC1Cartridge::new_and_empty())),
         }
@@ -164,13 +162,12 @@ impl MemoryBus {
         let booting = self.memory[BOOT_ROM_LOCK_REGISTER as usize] & 1 == 1;
 
         let region = MemoryRegion::from_addr(address, booting);
-        //TODO: set region access behaviour
 
         match region {
             // boot rom cannot be written to
             MemoryRegion::BootROM => {}
 
-            // graphics RAM should be handled by the PGU
+            // graphics RAM should be handled by the GPU
             // MemoryRegion::TileRAM => self.gpu.write_vram(address - VRAM_BEGIN, value),
 
             // Handle sections that go to the cartridge

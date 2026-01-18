@@ -14,7 +14,7 @@ use std::{
 
 use gameboy::Gameboy;
 
-use crate::{cartridge::CartridgeType, instructions::Instruction};
+use crate::instructions::Instruction;
 
 pub fn main() {
     // decode_file("resources/dmg_boot.bin");
@@ -22,7 +22,7 @@ pub fn main() {
 }
 
 pub fn create_and_run(cartridge_path: &Path) {
-    let mut gb = Gameboy::new(false, cartridge_path, CartridgeType::MBC1);
+    let mut gb = Gameboy::new(false, cartridge_path);
     gb.boot();
 }
 
@@ -66,15 +66,11 @@ pub fn decode_file<P: AsRef<Path> + std::fmt::Debug + Copy>(path: P) {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::{cartridge::CartridgeType, gameboy::Gameboy};
+    use crate::gameboy::Gameboy;
 
     #[test]
     fn test_roms() {
-        let mut gb = Gameboy::new(
-            true,
-            &PathBuf::from("resources/cpu_instrs.gb"),
-            CartridgeType::Basic,
-        );
+        let mut gb = Gameboy::new(true, &PathBuf::from("resources/cpu_instrs.gb"));
         gb.boot();
     }
 }
