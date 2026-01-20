@@ -2,6 +2,10 @@ use std::{fmt::Debug, path::Path};
 
 use crate::memory::MemoryRegion;
 
+// const ROM_BANK_SIZE: usize = 0x4000; // 16 KiB
+const RAM_BANK_SIZE: usize = 0x2000; // 8 KiB
+
+#[derive(Debug)]
 enum CartridgeType {
     ROMOnly,
     MBC1,
@@ -25,6 +29,30 @@ enum CartridgeType {
 }
 
 impl CartridgeType {
+    fn has_battery(&self) -> bool {
+        match self {
+            CartridgeType::MBC1Ram
+            | CartridgeType::ROMOnly
+            | CartridgeType::MBC1
+            | CartridgeType::MBC2
+            | CartridgeType::MBC3
+            | CartridgeType::MBC4
+            | CartridgeType::MBC5Ram
+            | CartridgeType::MBC4Ram
+            | CartridgeType::MBC3Ram
+            | CartridgeType::MBC5 => false,
+
+            CartridgeType::MBC1RamBat
+            | CartridgeType::RomRam
+            | CartridgeType::RomRamBat
+            | CartridgeType::MBC2Bat
+            | CartridgeType::MBC3TimerBat
+            | CartridgeType::MBC3RamTimerBat
+            | CartridgeType::MBC3RamBat
+            | CartridgeType::MBC4RamBat
+            | CartridgeType::MBC5RamBat => true,
+        }
+    }
     fn has_ram(&self) -> bool {
         match self {
             CartridgeType::ROMOnly
@@ -127,10 +155,13 @@ pub fn create_cartridge(path: &Path) -> Box<dyn Cartridge> {
         CartridgeType::from(cart[CartridgeHeaderConstants::CartridgeType.get_address()]);
     let ram_banks = get_ram_banks(cart[CartridgeHeaderConstants::RAMSize.get_address()]);
     let rom_banks = get_ram_banks(cart[CartridgeHeaderConstants::ROMSize.get_address()]);
+    let battery = cart_type.has_battery();
 
     match cart_type {
-        CartridgeType::MBC1 => Box::new(MBC1Cartridge::new(cart, ram_banks, rom_banks)),
-        _ => todo!(),
+        CartridgeType::MBC1 | CartridgeType::MBC1Ram => {
+            Box::new(MBC1Cartridge::new(cart, ram_banks, rom_banks))
+        }
+        _ => panic!("Unimplemented cartridge selected! {:?}", cart_type),
     }
 }
 
@@ -189,7 +220,7 @@ impl MBC1Cartridge {
     pub fn new(rom: Vec<u8>, ram_banks: usize, rom_banks: usize) -> Self {
         Self {
             rom,
-            ram: vec![0; ram_banks * 0x8000],
+            ram: vec![0; ram_banks * RAM_BANK_SIZE],
             registers: Default::default(),
             rom_banks,
             ram_banks,
@@ -203,7 +234,35 @@ impl MBC1Cartridge {
 
 impl Cartridge for MBC1Cartridge {
     fn read_byte(&self, address: u16) -> u8 {
-        todo!()
+        match MemoryRegion::from_addr(address, false) {
+            MemoryRegion::GameROMBank0 | MemoryRegion::GameROMBankN => {
+                let mut rom_addr = address as usize & 0x1FFF;
+
+                if address > 0x4000 || self.registers.banking_mode_select > 0 {
+                    rom_addr |= (self.registers.secondary_bank as usize) << 19;
+                }
+
+                if address > 0x400 {
+                    rom_addr |= (self.registers.rom_bank_number as usize) << 14;
+                }
+
+                self.rom[rom_addr]
+            }
+            MemoryRegion::CartridgeRAM => {
+                if self.registers.ram_enable {
+                    let mut ram_addr = address & 0x1FFF;
+
+                    if self.registers.banking_mode_select > 0 {
+                        ram_addr |= (self.registers.secondary_bank as u16) << 13;
+                    }
+
+                    self.ram[ram_addr as usize]
+                } else {
+                    0xFF
+                }
+            }
+            _ => panic!("Bad read address for a cartridge!"),
+        }
     }
 
     fn write_byte(&mut self, address: u16, val: u8) {
