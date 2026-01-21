@@ -1,9 +1,13 @@
 use std::{fmt::Debug, path::Path};
 
-use crate::memory::MemoryRegion;
+use crate::cartridge::{mbc1::MBC1Cartridge, mbc3::MBC3Cartridge};
 
-// const ROM_BANK_SIZE: usize = 0x4000; // 16 KiB
-const RAM_BANK_SIZE: usize = 0x2000; // 8 KiB
+pub mod basic;
+pub mod mbc1;
+pub mod mbc3;
+
+const RAM_BANK_SIZE: usize = 0x2000;
+const ROM_BANK_SIZE: usize = 0x4000;
 
 #[derive(Debug)]
 enum CartridgeType {
@@ -156,11 +160,20 @@ pub fn create_cartridge(path: &Path) -> Box<dyn Cartridge> {
     let ram_banks = get_ram_banks(cart[CartridgeHeaderConstants::RAMSize.get_address()]);
     let rom_banks = get_ram_banks(cart[CartridgeHeaderConstants::ROMSize.get_address()]);
     let battery = cart_type.has_battery();
+    let has_ram = cart_type.has_ram();
 
     match cart_type {
         CartridgeType::MBC1 | CartridgeType::MBC1Ram => {
             Box::new(MBC1Cartridge::new(cart, ram_banks, rom_banks))
         }
+        CartridgeType::MBC3
+        | CartridgeType::MBC3Ram
+        | CartridgeType::MBC3RamBat
+        | CartridgeType::MBC3RamTimerBat => Box::new(MBC3Cartridge::new(
+            cart,
+            if has_ram { Some(ram_banks) } else { None },
+            battery,
+        )),
         _ => panic!("Unimplemented cartridge selected! {:?}", cart_type),
     }
 }
@@ -168,136 +181,9 @@ pub fn create_cartridge(path: &Path) -> Box<dyn Cartridge> {
 pub trait Cartridge: Debug {
     fn read_byte(&self, address: u16) -> u8;
     fn write_byte(&mut self, address: u16, val: u8);
-}
 
-#[derive(Debug)]
-pub struct BasicCartridge {
-    data: [u8; 0x8000],
-}
-
-impl BasicCartridge {}
-
-impl Cartridge for BasicCartridge {
-    fn read_byte(&self, address: u16) -> u8 {
-        let region = MemoryRegion::from_addr(address, false);
-
-        match region {
-            MemoryRegion::GameROMBank0 | MemoryRegion::GameROMBankN => self.data[address as usize],
-            _ => 0xFF,
-        }
-    }
-
-    fn write_byte(&mut self, _address: u16, _val: u8) {
-        // no RAM, just ROM
-    }
-}
-
-#[derive(Debug, Default)]
-struct MBC1Registers {
-    // enables writing to RAM
-    ram_enable: bool,
-
-    // controls selected ROM bank
-    // 5 bit register
-    rom_bank_number: u8,
-
-    // secondary bank
-    secondary_bank: u8,
-
-    banking_mode_select: u8,
-}
-
-#[derive(Debug)]
-pub struct MBC1Cartridge {
-    rom: Vec<u8>,
-    ram: Vec<u8>,
-    registers: MBC1Registers,
-    rom_banks: usize,
-    ram_banks: usize,
-}
-
-impl MBC1Cartridge {
-    pub fn new(rom: Vec<u8>, ram_banks: usize, rom_banks: usize) -> Self {
-        Self {
-            rom,
-            ram: vec![0; ram_banks * RAM_BANK_SIZE],
-            registers: Default::default(),
-            rom_banks,
-            ram_banks,
-        }
-    }
-
-    pub fn new_and_empty() -> Self {
-        todo!()
-    }
-}
-
-impl Cartridge for MBC1Cartridge {
-    fn read_byte(&self, address: u16) -> u8 {
-        match MemoryRegion::from_addr(address, false) {
-            MemoryRegion::GameROMBank0 | MemoryRegion::GameROMBankN => {
-                let mut rom_addr = address as usize & 0x1FFF;
-
-                if address > 0x4000 || self.registers.banking_mode_select > 0 {
-                    rom_addr |= (self.registers.secondary_bank as usize) << 19;
-                }
-
-                if address > 0x400 {
-                    rom_addr |= (self.registers.rom_bank_number as usize) << 14;
-                }
-
-                self.rom[rom_addr]
-            }
-            MemoryRegion::CartridgeRAM => {
-                if self.registers.ram_enable {
-                    let mut ram_addr = address & 0x1FFF;
-
-                    if self.registers.banking_mode_select > 0 {
-                        ram_addr |= (self.registers.secondary_bank as u16) << 13;
-                    }
-
-                    self.ram[ram_addr as usize]
-                } else {
-                    0xFF
-                }
-            }
-            _ => panic!("Bad read address for a cartridge!"),
-        }
-    }
-
-    fn write_byte(&mut self, address: u16, val: u8) {
-        match address {
-            0x0000..=0x1FFF => {
-                // ram enable
-                // set TRUE if lower 4 bits = 0xA, and FALSE otherwise
-                self.registers.ram_enable = val & 0b1111 == 0xa;
-            }
-            0x2000..=0x3FFF => {
-                // rom bank number
-                let mut new_val = val & 0b11111;
-
-                if new_val == 0 {
-                    new_val = 1;
-                }
-
-                // TODO: handle if new val > number of banks
-
-                self.registers.rom_bank_number = new_val;
-            }
-
-            0x4000..=0x5FFF => {
-                // secondary bank number
-                self.registers.secondary_bank = val & 0b11;
-            }
-
-            0x6000..=0x7FFF => {
-                self.registers.banking_mode_select = val & 0b1;
-            }
-
-            _ => panic!(
-                "Writing to bad address on MBC1 chip! Address = 0x{:x}",
-                address
-            ),
-        }
-    }
+    // let the cartridge have a tick every M cycle.
+    // Not necessary in most cases, but useful for
+    // when cartridges have onboard clocks
+    fn tick(&mut self) {}
 }

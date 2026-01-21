@@ -1,5 +1,8 @@
 use std::ops::{Shl, Shr};
 
+use log::{debug, info};
+
+use crate::gameboy::DUMP_INFO_TICK;
 use crate::instructions::{
     AdcTargetType, AddByteTarget, AddTargetType, AndTargetType, ArithmeticByteTarget,
     ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc,
@@ -69,8 +72,8 @@ impl CPU {
                 instruction_byte = bus.read_byte(self.pc + 1);
             }
 
-            if self.debug_view {
-                println!(
+            if self.debug_view || unsafe { DUMP_INFO_TICK } {
+                debug!(
                     "\n\n{}: Parsing instruction: 0x{}{:x}. pc=0x{:x} (boot mode active: {})\n{:?}\nsp=0x{:x}",
                     self.instruction_counter,
                     if prefix { "cb" } else { "" },
@@ -107,7 +110,7 @@ impl CPU {
         }
 
         if self.pc == 0xfe {
-            println!("disabling boot rom, starting game...");
+            info!("disabling boot rom, starting game...");
             // self.debug_view = true;
         }
 
@@ -115,17 +118,18 @@ impl CPU {
     }
 
     fn execute_outer(&mut self, instruction: Instruction, bus: &mut MemoryBus) {
-        // if self.debug_view {
-        //     println!(
-        //         "\n\n{}: Executing instruction: pc=0x{:x} (boot mode active: {})\n{:?}\nsp=0x{:x}",
-        //         self.instruction_counter,
-        //         self.pc,
-        //         bus.boot_mode_active(),
-        //         self.registers,
-        //         self.sp
-        //     )
-        // }
-        self.pc = self.execute(instruction, bus);
+        self.pc = self.execute(instruction.clone(), bus);
+        if unsafe { DUMP_INFO_TICK } {
+            info!(
+                "\n\n{}:  pc=0x{:x} (boot mode active: {})\n{:?}\nsp=0x{:x}. Instruction={:?}",
+                self.instruction_counter,
+                self.pc,
+                bus.boot_mode_active(),
+                self.registers,
+                self.sp,
+                instruction
+            );
+        }
         self.instruction_counter += 1;
     }
 
@@ -143,12 +147,10 @@ impl CPU {
                 let should_jump = self.jmp_test(test);
                 let new_pc = self.call(should_jump, bus);
 
-                if self.debug_view {
-                    println!(
-                        "CALL. test={:?},res={},curr_pc=0x{:x},new_pc=0x{:x}",
-                        test, should_jump, self.pc, new_pc
-                    );
-                }
+                debug!(
+                    "CALL. test={:?},res={},curr_pc=0x{:x},new_pc=0x{:x}",
+                    test, should_jump, self.pc, new_pc
+                );
 
                 new_pc
             }
@@ -263,9 +265,7 @@ impl CPU {
                         ArithmeticWordTarget::SP => self.sp = self.sp.wrapping_add(1),
                     };
 
-                    if self.debug_view {
-                        println!("INC (word) target=({:?})", target)
-                    };
+                    debug!("INC (word) target=({:?})", target);
 
                     self.pc.wrapping_add(1)
                 }
@@ -325,16 +325,12 @@ impl CPU {
                     let offset = (self.read_next_byte(bus) as i8).wrapping_add(2).into();
                     let new_pc = self.pc.wrapping_add_signed(offset);
 
-                    if self.debug_view {
-                        println!("JR ({:?}), test succesful, jumping {}(unsigned=0x{:x}) + pc=0x{:x} = 0x{:x}", 
+                    debug!("JR ({:?}), test succesful, jumping {}(unsigned=0x{:x}) + pc=0x{:x} = 0x{:x}", 
                         test, offset, self.read_next_byte(bus), self.pc, new_pc);
-                    }
 
                     new_pc
                 } else {
-                    if self.debug_view {
-                        println!("JR ({:?}), test failed, jumping 2", test);
-                    }
+                    debug!("JR ({:?}), test failed, jumping 2", test);
                     self.pc.wrapping_add(2)
                 }
             }
@@ -400,12 +396,10 @@ impl CPU {
 
                 self.push(value, bus);
 
-                if self.debug_view {
-                    println!(
-                        "PUSH. target={:?},value=0x{:x} (sp=0x{:x})",
-                        target, value, self.sp
-                    );
-                }
+                debug!(
+                    "PUSH. target={:?},value=0x{:x} (sp=0x{:x})",
+                    target, value, self.sp
+                );
 
                 self.pc.wrapping_add(1)
             }
@@ -486,12 +480,10 @@ impl CPU {
 
                 let new_value = value.rotate_left(1);
 
-                if self.debug_view {
-                    println!(
-                        "RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}",
-                        target, value, new_value, self.registers.f.carry
-                    );
-                }
+                debug!(
+                    "RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}",
+                    target, value, new_value, self.registers.f.carry
+                );
 
                 match target {
                     ArithmeticByteTarget::A => self.registers.a = new_value,
@@ -626,12 +618,10 @@ impl CPU {
 
                 let new_value = value.rotate_right(1);
 
-                if self.debug_view {
-                    println!(
-                        "RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}",
-                        target, value, new_value, self.registers.f.carry
-                    );
-                }
+                debug!(
+                    "RLC. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, carry={}",
+                    target, value, new_value, self.registers.f.carry
+                );
 
                 match target {
                     ArithmeticByteTarget::A => self.registers.a = new_value,
@@ -682,12 +672,10 @@ impl CPU {
                 let new_val = self.sub(val.wrapping_add(self.registers.f.carry as u8));
                 self.registers.a = new_val;
 
-                if self.debug_view {
-                    println!(
-                        "SBC. target={:?}, orig_val=0x{:x},new_val=0x{:x}",
-                        target, val, new_val
-                    );
-                }
+                debug!(
+                    "SBC. target={:?}, orig_val=0x{:x},new_val=0x{:x}",
+                    target, val, new_val
+                );
 
                 self.pc.wrapping_add(pc_inc)
             }
@@ -766,12 +754,10 @@ impl CPU {
                 let new_val = self.sub(val);
                 self.registers.a = new_val;
 
-                if self.debug_view {
-                    println!(
-                        "SUB. target={:?}, orig_val=0x{:x},new_val=0x{:x}",
-                        target, val, new_val
-                    );
-                }
+                debug!(
+                    "SUB. target={:?}, orig_val=0x{:x},new_val=0x{:x}",
+                    target, val, new_val
+                );
 
                 self.pc.wrapping_add(pc_inc)
             }
@@ -816,9 +802,7 @@ impl CPU {
         self.registers.f.carry = false;
         self.registers.f.half_carry = false;
 
-        if self.debug_view {
-            println!("SRA. value=0x{:x},new_value=0x{:x}", value, new_value);
-        }
+        debug!("SRA. value=0x{:x},new_value=0x{:x}", value, new_value);
 
         match target {
             ArithmeticByteTarget::A => self.registers.a = new_value,
@@ -854,9 +838,7 @@ impl CPU {
         self.registers.f.carry = false;
         self.registers.f.half_carry = false;
 
-        if self.debug_view {
-            println!("SRA. value=0x{:x},new_value=0x{:x}", value, new_value);
-        }
+        debug!("SRA. value=0x{:x},new_value=0x{:x}", value, new_value);
 
         match target {
             ArithmeticByteTarget::A => self.registers.a = new_value,
@@ -901,12 +883,10 @@ impl CPU {
 
         let new_value = value.rotate_left(4);
 
-        if self.debug_view {
-            println!(
-                "SWAP. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, zero={}",
-                target, value, new_value, self.registers.f.zero
-            );
-        }
+        debug!(
+            "SWAP. target={:?}. orig_value=0x{:x}, new_value=0x{:x}, zero={}",
+            target, value, new_value, self.registers.f.zero
+        );
 
         match target {
             ArithmeticByteTarget::A => self.registers.a = new_value,
@@ -1036,12 +1016,10 @@ impl CPU {
                     LoadByteTarget::L => self.registers.l = source_value,
                 }
 
-                if self.debug_view {
-                    println!(
-                        "LD (byte). From source={:?},value=0x{:x} to target={:?}",
-                        source, source_value, target
-                    );
-                }
+                debug!(
+                    "LD (byte). From source={:?},value=0x{:x} to target={:?}",
+                    source, source_value, target
+                );
 
                 match source {
                     LoadByteSource::D8 => self.pc.wrapping_add(2),
@@ -1066,12 +1044,10 @@ impl CPU {
                     LoadWordTarget::DE => self.registers.set_de(source_value),
                 };
 
-                if self.debug_view {
-                    println!(
-                        "LD (word). From source={:?},value=0x{:x} to target={:?}",
-                        load_word_source, source_value, load_word_target
-                    );
-                }
+                debug!(
+                    "LD (word). From source={:?},value=0x{:x} to target={:?}",
+                    load_word_source, source_value, load_word_target
+                );
 
                 let pc_inc = match (load_word_target, load_word_source) {
                     (LoadWordTarget::HL, LoadWordSource::SPPlusS8) => 2,
@@ -1085,12 +1061,10 @@ impl CPU {
                 bus.write_byte(write_addr, self.registers.a);
                 self.registers.set_hl(write_addr.wrapping_add(1));
 
-                if self.debug_view {
-                    println!(
-                        "LD (AIntoHLInc). From source=A,value=0x{:x} to address=0x{:x}",
-                        self.registers.a, write_addr
-                    );
-                }
+                debug!(
+                    "LD (AIntoHLInc). From source=A,value=0x{:x} to address=0x{:x}",
+                    self.registers.a, write_addr
+                );
 
                 self.pc.wrapping_add(1)
             }
@@ -1099,12 +1073,10 @@ impl CPU {
                 bus.write_byte(write_addr, self.registers.a);
                 self.registers.set_hl(write_addr.wrapping_sub(1));
 
-                if self.debug_view {
-                    println!(
-                        "LD (AIntoHLDec). From source=A,value=0x{:x} to address=0x{:x}",
-                        self.registers.a, write_addr
-                    );
-                }
+                debug!(
+                    "LD (AIntoHLDec). From source=A,value=0x{:x} to address=0x{:x}",
+                    self.registers.a, write_addr
+                );
 
                 self.pc.wrapping_add(1)
             }
@@ -1118,14 +1090,12 @@ impl CPU {
 
                 self.registers.a = bus.read_byte(addr);
 
-                if self.debug_view {
-                    println!(
+                debug!(
                         "LD (AFromByteAddress). From source=({:?}),value=0x{:x} to address=A. Increment=0x{:x}",
                         addr,
                         bus.read_byte(addr),
                         addr_inc
                     );
-                }
 
                 self.pc.wrapping_add(pc_inc)
             }
@@ -1139,12 +1109,10 @@ impl CPU {
 
                 bus.write_byte(addr, self.registers.a);
 
-                if self.debug_view {
-                    println!(
+                debug!(
                         "LD (ByteAddressFromA). From source=A,value=0x{:x} to address=0x{:x}. inc=0x{:x}. inc source={:?}",
                         self.registers.a, addr, addr_inc, ld_byte_address,
                     );
-                }
 
                 self.pc.wrapping_add(pc_inc)
             }
@@ -1157,12 +1125,10 @@ impl CPU {
 
                 self.registers.a = bus.read_byte(addr);
 
-                if self.debug_view {
-                    println!(
-                        "LD (AFromIndirect). From source={:?},memory=0x{:x},value=0x{:x} to A",
-                        addr_source, addr, self.registers.a
-                    );
-                }
+                debug!(
+                    "LD (AFromIndirect). From source={:?},memory=0x{:x},value=0x{:x} to A",
+                    addr_source, addr, self.registers.a
+                );
 
                 self.pc.wrapping_add(pc_inc)
             }
@@ -1189,12 +1155,10 @@ impl CPU {
                     }
                 };
 
-                if self.debug_view {
-                    println!(
-                        "LD (IndirectFromA). From source=A,value=0x{:x} to address=0x{:x}",
-                        self.registers.a, addr
-                    );
-                }
+                debug!(
+                    "LD (IndirectFromA). From source=A,value=0x{:x} to address=0x{:x}",
+                    self.registers.a, addr
+                );
 
                 self.pc.wrapping_add(pc_inc)
             }
@@ -1331,9 +1295,7 @@ impl CPU {
         self.registers.f.carry = false;
         self.registers.f.half_carry = false;
 
-        if self.debug_view {
-            println!("XOR. value=0x{:x},new_value=0x{:x}", value, new_value);
-        }
+        debug!("XOR. value=0x{:x},new_value=0x{:x}", value, new_value);
 
         new_value
     }

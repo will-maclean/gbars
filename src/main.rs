@@ -8,7 +8,7 @@ pub mod ppu;
 pub mod registers;
 
 use std::{
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -17,13 +17,21 @@ use gameboy::Gameboy;
 use crate::instructions::Instruction;
 
 pub fn main() {
-    // decode_file("resources/dmg_boot.bin");
+    // decode_file("resources/game.gb");
     create_and_run(&PathBuf::from("resources/game.gb"));
 }
 
 pub fn create_and_run(cartridge_path: &Path) {
+    configure_logger();
     let mut gb = Gameboy::new(false, cartridge_path);
     gb.boot();
+}
+
+fn configure_logger() {
+    if env::var("RUST_LOG").is_err() {
+        unsafe { env::set_var("RUST_LOG", "debug") }
+    }
+    env_logger::init();
 }
 
 pub fn decode_file<P: AsRef<Path> + std::fmt::Debug + Copy>(path: P) {

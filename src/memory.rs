@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::{
-    cartridge::{Cartridge, MBC1Cartridge},
+    cartridge::{basic::BasicCartridge, Cartridge},
     ppu::PPUMode,
 };
 
@@ -41,7 +41,7 @@ impl MemoryRegion {
     pub fn from_addr(addr: u16, is_booting: bool) -> Self {
         if addr <= 0x00FF && is_booting {
             MemoryRegion::BootROM
-        } else if addr <= 0x00FF {
+        } else if addr <= 0x3FFF {
             MemoryRegion::GameROMBank0
         } else if addr <= 0x7FFF {
             MemoryRegion::GameROMBankN
@@ -78,7 +78,7 @@ pub struct MemoryBus {
     //
     // 0x0000 - 0x3FFF: Game ROM Bank 0
     //
-    // 0x400 - 0x7FFF: Game ROM Bank N
+    // 0x4000 - 0x7FFF: Game ROM Bank N
     //
     // 0x8000 - 0x97FF: Tile RAM
     //
@@ -113,7 +113,7 @@ impl MemoryBus {
             boot_rom: [0; 0x100],
             memory: [0; 0x10000],
             // gpu: GPU::new(),
-            cartridge: cartridge.unwrap_or_else(|| Box::new(MBC1Cartridge::new_and_empty())),
+            cartridge: cartridge.unwrap_or_else(|| Box::new(BasicCartridge::new())),
         }
     }
 
