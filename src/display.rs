@@ -2,7 +2,7 @@ use raylib::prelude::*;
 
 use crate::{
     memory::MemoryBus,
-    ppu::{DisplayRegisters, LCDC},
+    ppu::{DisplayRegisters, LCDC, PPU},
 };
 
 pub const BACKGROUND_WIDTH_PIXELS: usize = 256;
@@ -11,8 +11,8 @@ pub const BACKGROUND_TILES_PIXELS_WIDTH: usize = 8;
 pub const BACKGROUND_TILES_PIXELS_HEIGHT: usize = 8;
 pub const BACKGROUND_TILES_WIDTH_N: usize = 32;
 pub const BACKGROUND_TILES_HEIGHT_N: usize = 32;
-pub const SCREEN_WIDTH_PIXELS: usize = 166;
-pub const SCREEN_HEIGHT_PIXELS: usize = 144;
+pub const SCREEN_WIDTH_PIXELS: usize = 144;
+pub const SCREEN_HEIGHT_PIXELS: usize = 160;
 pub const MAX_DISPLAY_SPRITES: usize = 40;
 pub const MAX_DISPLAY_SPRITES_PER_SCAN_LINE: usize = 10;
 
@@ -27,6 +27,7 @@ pub enum DrawColor {
 pub struct GbDisplay {
     rl: RaylibHandle,
     thread: RaylibThread,
+    buffer: [[u8; SCREEN_WIDTH_PIXELS]; SCREEN_HEIGHT_PIXELS],
 }
 
 impl GbDisplay {
@@ -34,9 +35,13 @@ impl GbDisplay {
         let (mut rl, thread) = raylib::init().size(640, 480).title("GBARS").build();
         rl.set_target_fps(30);
 
-        Ok(Self { rl, thread })
+        Ok(Self {
+            rl,
+            thread,
+            buffer: [[0; SCREEN_WIDTH_PIXELS]; SCREEN_HEIGHT_PIXELS],
+        })
     }
-    pub fn render(&mut self, bus: &MemoryBus) -> bool {
+    pub fn render(&mut self, bus: &MemoryBus, ppu: &PPU) -> bool {
         let lcdc = LCDC::from(bus.read_byte(DisplayRegisters::LCDC.get_address() as u16));
 
         if !lcdc.lcd_display_enable {

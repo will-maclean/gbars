@@ -1,3 +1,6 @@
+pub mod oam;
+pub mod sprite;
+
 use crate::memory::MemoryBus;
 
 pub enum DisplayRegisters {
@@ -147,4 +150,6 @@ impl PPU {
             self.mode = PPUMode::Mode0HorizontalBlank;
         }
     }
+
+    fn update_curr_line(&self) -> (usize, [u8; 144]) {}
 }
