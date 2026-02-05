@@ -1470,9 +1470,11 @@ impl CPU {
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::RefCell, rc::Rc};
+
     use test_case::test_matrix;
 
-    use crate::memory::MemoryBus;
+    use crate::{memory::MemoryBus, ppu::PPU};
 
     use super::{Instruction, CPU};
 
@@ -1492,7 +1494,8 @@ mod tests {
         let instruction = Instruction::from_byte(opcode, prefixed).unwrap();
 
         let mut cpu = CPU::new_and_empty();
-        let mut bus = MemoryBus::new_and_empty(None);
+        let ppu = Rc::new(RefCell::new(PPU::new()));
+        let mut bus = MemoryBus::new_and_empty(None, ppu);
 
         cpu.execute(instruction, &mut bus);
     }

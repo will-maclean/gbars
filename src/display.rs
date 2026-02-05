@@ -27,7 +27,6 @@ pub enum DrawColor {
 pub struct GbDisplay {
     rl: RaylibHandle,
     thread: RaylibThread,
-    buffer: [[u8; SCREEN_WIDTH_PIXELS]; SCREEN_HEIGHT_PIXELS],
 }
 
 impl GbDisplay {
@@ -35,16 +34,17 @@ impl GbDisplay {
         let (mut rl, thread) = raylib::init().size(640, 480).title("GBARS").build();
         rl.set_target_fps(30);
 
-        Ok(Self {
-            rl,
-            thread,
-            buffer: [[0; SCREEN_WIDTH_PIXELS]; SCREEN_HEIGHT_PIXELS],
-        })
+        Ok(Self { rl, thread })
     }
+
     pub fn render(&mut self, bus: &MemoryBus, ppu: &PPU) -> bool {
         let lcdc = LCDC::from(bus.read_byte(DisplayRegisters::LCDC.get_address() as u16));
 
-        if !lcdc.lcd_display_enable {
+        if lcdc.lcd_display_enable {
+            let buffer = ppu.get_screen_buffer();
+
+            //TODO: draw the buffer
+
             self.rl.draw(&self.thread, |mut d| {
                 d.clear_background(Color::WHITE);
                 d.draw_text("Screen enabled :)", 12, 12, 20, Color::BLACK);

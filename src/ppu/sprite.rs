@@ -1,7 +1,9 @@
+#[derive(Debug)]
 pub struct Sprite {
     raw: [[ColorIdx; 8]; 8],
 }
 
+#[derive(Debug, Copy, Clone)]
 enum ColorIdx {
     Zero,
     One,

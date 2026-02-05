@@ -1,8 +1,8 @@
-use std::fs;
+use std::{cell::RefCell, fs, rc::Rc};
 
 use crate::{
     cartridge::{basic::BasicCartridge, Cartridge},
-    ppu::PPUMode,
+    ppu::{PPUMode, PPU},
 };
 
 const BOOT_ROM_LOCK_REGISTER: u16 = 0xFF50;
@@ -103,22 +103,24 @@ pub struct MemoryBus {
 
     memory: [u8; 0x10000],
 
-    // gpu: GPU,
     cartridge: Box<dyn Cartridge>,
+
+    ppu: Rc<RefCell<PPU>>,
 }
 
 impl MemoryBus {
-    pub fn new_and_empty(cartridge: Option<Box<dyn Cartridge>>) -> Self {
+    pub fn new_and_empty(cartridge: Option<Box<dyn Cartridge>>, ppu: Rc<RefCell<PPU>>) -> Self {
         Self {
             boot_rom: [0; 0x100],
             memory: [0; 0x10000],
             // gpu: GPU::new(),
             cartridge: cartridge.unwrap_or_else(|| Box::new(BasicCartridge::new())),
+            ppu,
         }
     }
 
-    pub fn new_and_load_bios(cartridge: Option<Box<dyn Cartridge>>) -> Self {
-        let mut bus = Self::new_and_empty(cartridge);
+    pub fn new_and_load_bios(cartridge: Option<Box<dyn Cartridge>>, ppu: Rc<RefCell<PPU>>) -> Self {
+        let mut bus = Self::new_and_empty(cartridge, ppu);
         let read_res = fs::read(BOOT_ROM_BIN_PATH);
 
         match read_res {
@@ -148,7 +150,8 @@ impl MemoryBus {
                     self.memory[address as usize]
                 }
             }
-            // MemoryRegion::TileRAM => self.gpu.read_vram((address - VRAM_BEGIN) as usize),
+            MemoryRegion::TileRAM => self.ppu.borrow().read_vram(address),
+            MemoryRegion::OAM => self.ppu.borrow().read_oam(address),
 
             // Handle sections that go to the cartridge
             MemoryRegion::GameROMBank0
@@ -168,7 +171,8 @@ impl MemoryBus {
             MemoryRegion::BootROM => {}
 
             // graphics RAM should be handled by the GPU
-            // MemoryRegion::TileRAM => self.gpu.write_vram(address - VRAM_BEGIN, value),
+            MemoryRegion::TileRAM => self.ppu.borrow_mut().write_vram(address, value),
+            MemoryRegion::OAM => self.ppu.borrow_mut().write_oam(address, value),
 
             // Handle sections that go to the cartridge
             MemoryRegion::GameROMBank0

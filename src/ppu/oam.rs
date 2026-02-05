@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, Copy)]
 pub struct OAMEntry {
     pub y: u8,
     pub x: u8,
@@ -16,10 +17,39 @@ impl From<[u8; 4]> for OAMEntry {
             y: value[0],
             x: value[1],
             tile_idx: value[2],
-            priority: value[3] & 0x7F,
-            y_flip: value[3] & 0x3F,
-            x_flip: value[3] & 0x1F,
+            priority: value[3] & 0x7F == 1,
+            y_flip: value[3] & 0x3F == 1,
+            x_flip: value[3] & 0x1F == 1,
             palette: value[3] & 0xF,
+        }
+    }
+}
+
+impl OAMEntry {
+    pub fn from_zeros() -> Self {
+        Self::from([0; 4])
+    }
+    pub fn to_byte(&self, offset: usize) -> u8 {
+        match offset {
+            0 => self.y,
+            1 => self.x,
+            2 => self.tile_idx,
+            3 => {
+                todo!();
+            }
+            _ => panic!("Invalid index into OAMEntry: {offset}"),
+        }
+    }
+
+    pub fn write_byte(&mut self, offset: usize, val: u8) {
+        match offset {
+            0 => self.y = val,
+            1 => self.x = val,
+            2 => self.tile_idx = val,
+            3 => {
+                todo!();
+            }
+            _ => panic!("Invalid index into OAMEntry: {offset}"),
         }
     }
 }

@@ -1,5 +1,7 @@
 use std::{
+    cell::RefCell,
     path::Path,
+    rc::Rc,
     thread::sleep,
     time::{Duration, Instant},
 };
@@ -19,7 +21,7 @@ pub struct Gameboy {
     bus: MemoryBus,
     cpu: CPU,
     display: GbDisplay,
-    ppu: PPU,
+    ppu: Rc<RefCell<PPU>>,
     running: bool,
 }
 
@@ -31,11 +33,13 @@ impl Gameboy {
             panic!("Failed to start display!");
         }
 
+        let ppu = Rc::new(RefCell::new(PPU::new()));
+
         Self {
-            bus: MemoryBus::new_and_load_bios(Some(create_cartridge(cartridge_path))),
+            bus: MemoryBus::new_and_load_bios(Some(create_cartridge(cartridge_path)), ppu.clone()),
             cpu: CPU::new(debug_mode),
             running: false,
-            ppu: PPU::new(),
+            ppu,
             display: display.unwrap(),
         }
     }
@@ -47,13 +51,13 @@ impl Gameboy {
             panic!("Failed to start display!");
         }
 
+        let ppu = Rc::new(RefCell::new(PPU::new()));
+
         Self {
-            bus: MemoryBus::new_and_empty(None),
+            bus: MemoryBus::new_and_empty(None, ppu.clone()),
             cpu: CPU::new(debug_mode),
-            // display: GbDisplay::new(),
             running: false,
-            // dt: std::time::Duration::new(0, 0),
-            ppu: PPU::new(),
+            ppu,
             display: display.unwrap(),
         }
     }
@@ -85,7 +89,7 @@ impl Gameboy {
             }
             cpu_ticker += 1;
 
-            self.running &= self.ppu.step(&mut self.bus);
+            self.running &= self.ppu.borrow_mut().step(&mut self.bus);
 
             if Instant::now() - m_tick_duration < last_m_tick {
                 sleep(m_tick_duration - (Instant::now() - last_m_tick));
@@ -93,7 +97,7 @@ impl Gameboy {
             }
 
             if Instant::now() - render_tick_duration > last_render {
-                self.running &= self.display.render(&self.bus);
+                self.running &= self.display.render(&self.bus, &self.ppu.borrow_mut());
                 last_render = Instant::now();
                 debug!("Render");
             }
