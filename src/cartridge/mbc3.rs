@@ -1,3 +1,5 @@
+use log::debug;
+
 use crate::{
     cartridge::{Cartridge, ROM_BANK_SIZE},
     gameboy::DUMP_INFO_TICK,
@@ -31,11 +33,13 @@ pub struct MBC3Cartridge {
     ram: Option<Vec<u8>>,
     registers: MBC3Registers,
     has_battery: bool,
+    rom_banks: usize,
 }
 
 impl MBC3Cartridge {
     pub fn new(rom: Vec<u8>, ram_banks: Option<usize>, has_battery: bool) -> Self {
         Self {
+            rom_banks: rom.len() / ROM_BANK_SIZE,
             rom,
             ram: if let Some(ram_banks) = ram_banks {
                 Some(vec![0; ram_banks * 0x8000])
@@ -113,7 +117,7 @@ impl Cartridge for MBC3Cartridge {
                 // ram enable
                 // set TRUE if lower 4 bits = 0xA, and FALSE otherwise
                 self.registers.ram_timer_enable = val & 0b1111 == 0xa;
-                println!(
+                debug!(
                     "RAM ENABLE write. Write addr=0x{:x}, val=0x{:x}",
                     address, val
                 );
@@ -132,7 +136,9 @@ impl Cartridge for MBC3Cartridge {
 
                 new_val &= 0x7F;
 
-                println!(
+                new_val = (new_val as usize % self.rom_banks) as u8;
+
+                debug!(
                     "updating ROM bank number. Write addr=0x{:x}, val=0x{:x}, new rom bank=0x{:x}",
                     address, val, new_val,
                 );
@@ -144,12 +150,12 @@ impl Cartridge for MBC3Cartridge {
                 if val <= 0x07 {
                     self.registers.ram_bank_number = val;
                     self.registers.ram_over_rtc = true;
-                    println!(
+                    debug!(
                         "RAM BANK write. Write addr=0x{:x}, val=0x{:x}",
                         address, val
                     );
                 } else {
-                    println!("RTC write. Write addr=0x{:x}, val=0x{:x}", address, val);
+                    debug!("RTC write. Write addr=0x{:x}, val=0x{:x}", address, val);
                     self.registers.ram_over_rtc = false;
                 }
             }
@@ -159,7 +165,7 @@ impl Cartridge for MBC3Cartridge {
                     self.registers.clock_latched = !self.registers.clock_latched;
                 }
                 self.registers.latch_clock = val;
-                println!(
+                debug!(
                     "LATCH CLOCK write. Write addr=0x{:x}, val=0x{:x}",
                     address, val
                 );

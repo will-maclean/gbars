@@ -20,8 +20,7 @@ pub struct GbDisplay {
 
 impl GbDisplay {
     pub fn start() -> Result<Self, ()> {
-        let (mut rl, thread) = raylib::init().size(640, 480).title("GBARS").build();
-        rl.set_target_fps(30);
+        let (rl, thread) = raylib::init().size(640, 480).title("GBARS").build();
 
         Ok(Self { rl, thread })
     }
@@ -30,11 +29,31 @@ impl GbDisplay {
         if bus.registers.LCDC.lcd_display_enable {
             let buffer = ppu.get_screen_buffer();
 
-            //TODO: draw the buffer
-
             self.rl.draw(&self.thread, |mut d| {
-                d.clear_background(Color::WHITE);
-                d.draw_text("Screen enabled :)", 12, 12, 20, Color::BLACK);
+                d.clear_background(Color::GREEN);
+
+                let screen_width = d.get_screen_width();
+                let screen_height = d.get_screen_height();
+
+                let px_width = screen_width / SCREEN_WIDTH_PIXELS as i32;
+                let px_height = screen_height / SCREEN_HEIGHT_PIXELS as i32;
+
+                for i in 0..buffer.len() {
+                    for j in 0..buffer[0].len() {
+                        d.draw_rectangle(
+                            i as i32 * px_width,
+                            j as i32 * px_height,
+                            px_width,
+                            px_height,
+                            match buffer[i][j] {
+                                crate::ppu::DrawColor::BLACK => Color::BLUE,
+                                crate::ppu::DrawColor::DARKGREY => Color::GRAY,
+                                crate::ppu::DrawColor::LIGHTGREY => Color::LIGHTGRAY,
+                                crate::ppu::DrawColor::WHITE => Color::WHITE,
+                            },
+                        );
+                    }
+                }
             });
         } else {
             self.rl.draw(&self.thread, |mut d| {

@@ -48,7 +48,7 @@ pub struct PPU {
     lx: usize,
     mode: PPUMode,
     sprites: [Sprite; 384],
-    oam_entries: [OAMEntry; 0x9F / 4],
+    oam_entries: [OAMEntry; 40],
 
     screen_buffer: [[DrawColor; SCREEN_WIDTH_PIXELS]; SCREEN_HEIGHT_PIXELS],
 
@@ -62,7 +62,7 @@ impl PPU {
             lx: 0,
             mode: PPUMode::Mode2OAMScan,
             sprites: [Sprite::from_zeros(); 384],
-            oam_entries: [OAMEntry::from_zeros(); 0x9f / 4],
+            oam_entries: [OAMEntry::from_zeros(); 40],
             screen_buffer: [[DrawColor::BLACK; SCREEN_WIDTH_PIXELS]; SCREEN_HEIGHT_PIXELS],
             tile_map_lower: [0; 32 * 32],
             tile_map_upper: [0; 32 * 32],
@@ -126,7 +126,10 @@ impl PPU {
 
         self.oam_entries
             .get_mut(offset_address / 4)
-            .unwrap()
+            .expect(&format!(
+                "Bad OAM entry access! Trying to get entry {}",
+                offset_address / 4
+            ))
             .write_byte(offset_address % 4, val);
     }
 
