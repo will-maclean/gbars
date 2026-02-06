@@ -1,9 +1,6 @@
 use raylib::prelude::*;
 
-use crate::{
-    memory::MemoryBus,
-    ppu::{DisplayRegisters, LCDC, PPU},
-};
+use crate::{memory::MemoryBus, ppu::PPU};
 
 pub const BACKGROUND_WIDTH_PIXELS: usize = 256;
 pub const BACKGROUND_HEIGHT_PIXELS: usize = 256;
@@ -38,9 +35,7 @@ impl GbDisplay {
     }
 
     pub fn render(&mut self, bus: &MemoryBus, ppu: &PPU) -> bool {
-        let lcdc = LCDC::from(bus.read_byte(DisplayRegisters::LCDC.get_address() as u16));
-
-        if lcdc.lcd_display_enable {
+        if bus.registers.LCDC.lcd_display_enable {
             let buffer = ppu.get_screen_buffer();
 
             //TODO: draw the buffer

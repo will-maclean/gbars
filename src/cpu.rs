@@ -3,6 +3,7 @@ use std::ops::{Shl, Shr};
 use log::{debug, info};
 
 use crate::gameboy::DUMP_INFO_TICK;
+use crate::hardware_registers::RegisterAddresses;
 use crate::instructions::{
     AdcTargetType, AddByteTarget, AddTargetType, AndTargetType, ArithmeticByteTarget,
     ArithmeticTargetType, ArithmeticWordTarget, BitPosition, BitRegister, Instruction, JpAddrLoc,
@@ -10,7 +11,7 @@ use crate::instructions::{
     LoadWordSource, LoadWordTarget, ORTargetType, SBCByteTarget, StackTarget, SubByteTarget,
     XORTargetType,
 };
-use crate::memory::{GeneralRegisters, MemoryBus};
+use crate::memory::MemoryBus;
 use crate::registers::Registers;
 
 #[derive(Debug, Clone)]
@@ -778,7 +779,7 @@ impl CPU {
     }
 
     fn ei(&mut self, bus: &mut MemoryBus) -> u16 {
-        bus.write_byte(GeneralRegisters::IE.get_address(), 1);
+        bus.write_byte(RegisterAddresses::IE.address(), 1);
         1
     }
 
@@ -856,7 +857,7 @@ impl CPU {
 
     // Unconditional return from a function. Also enables interrupts by setting IME=1
     fn reti(&mut self, bus: &mut MemoryBus) -> u16 {
-        bus.write_byte(GeneralRegisters::IE.get_address(), 1);
+        bus.write_byte(RegisterAddresses::IE.address(), 1);
 
         self.pop(bus)
     }
