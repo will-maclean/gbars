@@ -1,27 +1,9 @@
+use crate::ppu::ColorIdx;
+
 #[derive(Debug, Copy, Clone)]
 pub struct Sprite {
     raw: [u8; 16],
     colour: [[ColorIdx; 8]; 8],
-}
-
-#[derive(Debug, Copy, Clone)]
-enum ColorIdx {
-    Zero,
-    One,
-    Two,
-    Three,
-}
-
-impl From<u8> for ColorIdx {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => ColorIdx::Zero,
-            1 => ColorIdx::One,
-            2 => ColorIdx::Two,
-            3 => ColorIdx::Three,
-            _ => panic!("Unknown colour index {value}"),
-        }
-    }
 }
 
 impl Sprite {
@@ -66,5 +48,9 @@ impl Sprite {
         self.raw[offset] = val;
 
         self.update_colour();
+    }
+
+    pub fn pixel_at(&self, x: u8, y: u8) -> ColorIdx {
+        self.colour[x as usize][y as usize]
     }
 }

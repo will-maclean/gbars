@@ -6,8 +6,10 @@ edition = "2021"
 [dependencies]
 env_logger = "0.11.8"
 log = "0.4.29"
-raylib = "5.5.1"
+raylib = { version = "5.5", default-features = false, features = ["nobuild"] }
 
+[build-dependencies]
+pkg-config = "0.3"
 
 [dev-dependencies]
 test-case = "*"

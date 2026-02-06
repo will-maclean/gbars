@@ -30,7 +30,7 @@ pub fn create_and_run(cartridge_path: &Path) {
 
 fn configure_logger() {
     if env::var("RUST_LOG").is_err() {
-        unsafe { env::set_var("RUST_LOG", "debug") }
+        unsafe { env::set_var("RUST_LOG", "error") }
     }
     env_logger::init();
 }

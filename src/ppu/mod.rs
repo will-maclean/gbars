@@ -2,12 +2,39 @@ pub mod oam;
 pub mod sprite;
 
 use crate::{
-    display::{DrawColor, SCREEN_HEIGHT_PIXELS, SCREEN_WIDTH_PIXELS},
+    display::{SCREEN_HEIGHT_PIXELS, SCREEN_WIDTH_PIXELS},
     hardware_registers::RegisterAddresses,
     memory::MemoryBus,
     ppu::{oam::OAMEntry, sprite::Sprite},
 };
 
+#[derive(Copy, Debug, Clone)]
+pub enum DrawColor {
+    BLACK,
+    DARKGREY,
+    LIGHTGREY,
+    WHITE,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ColorIdx {
+    Zero,
+    One,
+    Two,
+    Three,
+}
+
+impl From<u8> for ColorIdx {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => ColorIdx::Zero,
+            1 => ColorIdx::One,
+            2 => ColorIdx::Two,
+            3 => ColorIdx::Three,
+            _ => panic!("Unknown colour index {value}"),
+        }
+    }
+}
 #[derive(Debug, Copy, Clone)]
 pub enum PPUMode {
     Mode0HorizontalBlank,
@@ -129,10 +156,40 @@ impl PPU {
             .write_byte(offset_address % 16, val)
     }
 
-    fn render_line(&self, memory: &mut MemoryBus) {
-        todo!()
+    fn render_line(&mut self, memory: &mut MemoryBus) {
+        for x in 0..SCREEN_WIDTH_PIXELS {
+            self.screen_buffer[memory.registers.LY as usize][x] =
+                self.get_pixel(memory.registers.LY, x as u8, memory);
+        }
     }
 
+    fn get_pixel(&self, y: u8, x: u8, memory: &mut MemoryBus) -> DrawColor {
+        //TODO: OAM pixel
+
+        let pixel = self.get_bg_pixel(y, x, memory);
+
+        //TODO: palettes
+        match pixel {
+            ColorIdx::Zero => DrawColor::WHITE,
+            ColorIdx::One => DrawColor::LIGHTGREY,
+            ColorIdx::Two => DrawColor::DARKGREY,
+            ColorIdx::Three => DrawColor::BLACK,
+        }
+    }
+
+    fn get_bg_pixel(&self, y: u8, x: u8, memory: &mut MemoryBus) -> ColorIdx {
+        let bg_x = x + memory.registers.SCX;
+        let bg_y = y + memory.registers.SCY;
+
+        let bg_x_idx = bg_x / 8;
+        let bg_y_idx = bg_y / 8;
+
+        let bg_tile_idx: u8 = self.tile_map_upper[bg_x_idx as usize * 32 + bg_y_idx as usize];
+
+        let bg_tile: Sprite = self.sprites[bg_tile_idx as usize];
+
+        bg_tile.pixel_at(bg_x % 8, bg_y % 8)
+    }
     fn update_scan_registers(&mut self, memory: &mut MemoryBus) -> bool {
         let (ly, render_line) = if self.lx >= 456 {
             self.lx = 0;

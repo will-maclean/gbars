@@ -81,17 +81,33 @@ impl std::convert::From<u8> for LCDC {
 }
 
 #[derive(Debug)]
-pub struct IE {}
+pub struct IE {
+    joypad: bool,
+    serial: bool,
+    timer: bool,
+    lcd: bool,
+    vblank: bool,
+}
 
 impl IE {
     pub fn to_byte(&self) -> u8 {
-        todo!()
+        (self.joypad as u8) << 4
+            | (self.serial as u8) << 3
+            | (self.timer as u8) << 2
+            | (self.lcd as u8) << 1
+            | (self.vblank as u8)
     }
 }
 
 impl std::convert::From<u8> for IE {
     fn from(byte: u8) -> Self {
-        todo!()
+        Self {
+            joypad: byte >> 4 & 1 == 1,
+            serial: byte >> 3 & 1 == 1,
+            timer: byte >> 2 & 1 == 1,
+            lcd: byte >> 1 & 1 == 1,
+            vblank: byte & 1 == 1,
+        }
     }
 }
 
@@ -117,11 +133,21 @@ impl STAT {
         }
     }
     pub fn to_byte(&self) -> u8 {
-        todo!()
+        ((self.lyc_int_select as u8) << 6)
+            | ((self.lyc_int_select as u8) << 5)
+            | ((self.mode_2_int_select as u8) << 4)
+            | ((self.mode_1_int_select as u8) << 3)
+            | ((self.mode_0_int_select as u8) << 2)
+            | (self.ppu_mode as u8)
     }
 
     pub fn write_byte(&mut self, val: u8) {
-        todo!()
+        self.lyc_int_select = val >> 6 & 1 == 1;
+        self.mode_2_int_select = val >> 5 & 1 == 1;
+        self.mode_1_int_select = val >> 4 & 1 == 1;
+        self.mode_0_int_select = val >> 3 & 1 == 1;
+        self.lyc_eq_ly = val >> 2 & 1 == 1;
+        self.ppu_mode = val & 0b11 > 1;
     }
 }
 

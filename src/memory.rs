@@ -101,7 +101,7 @@ pub struct MemoryBus {
 
 impl MemoryBus {
     pub fn new_and_empty(cartridge: Option<Box<dyn Cartridge>>, ppu: Rc<RefCell<PPU>>) -> Self {
-        let mut bus = Self {
+        let bus = Self {
             boot_rom: [0; 0x100],
             memory: [0; 0x10000],
             // gpu: GPU::new(),
@@ -110,13 +110,7 @@ impl MemoryBus {
             registers: HardwareRegisters::from_zeros(),
         };
 
-        bus.load_ppu_and_registers();
-
         bus
-    }
-
-    fn load_ppu_and_registers(&mut self) {
-        todo!()
     }
 
     pub fn new_and_load_bios(cartridge: Option<Box<dyn Cartridge>>, ppu: Rc<RefCell<PPU>>) -> Self {

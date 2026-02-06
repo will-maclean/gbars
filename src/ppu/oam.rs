@@ -35,7 +35,12 @@ impl OAMEntry {
             1 => self.x,
             2 => self.tile_idx,
             3 => {
-                todo!();
+                ((self.priority as u8) << 6)
+                    | ((self.y_flip as u8) << 5)
+                    | ((self.x_flip as u8) << 4)
+                    | ((self.palette as u8) << 3)
+
+                //TODO: any weirdness from not capturing and then returning the unused bits??
             }
             _ => panic!("Invalid index into OAMEntry: {offset}"),
         }
@@ -47,7 +52,10 @@ impl OAMEntry {
             1 => self.x = val,
             2 => self.tile_idx = val,
             3 => {
-                todo!();
+                self.priority = val & 0x7F == 1;
+                self.y_flip = val & 0x3F == 1;
+                self.x_flip = val & 0x1F == 1;
+                self.palette = val & 0xF;
             }
             _ => panic!("Invalid index into OAMEntry: {offset}"),
         }

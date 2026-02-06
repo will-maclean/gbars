@@ -13,14 +13,6 @@ pub const SCREEN_HEIGHT_PIXELS: usize = 160;
 pub const MAX_DISPLAY_SPRITES: usize = 40;
 pub const MAX_DISPLAY_SPRITES_PER_SCAN_LINE: usize = 10;
 
-#[derive(Copy, Debug, Clone)]
-pub enum DrawColor {
-    BLACK,
-    DARKGREY,
-    LIGHTGREY,
-    WHITE,
-}
-
 pub struct GbDisplay {
     rl: RaylibHandle,
     thread: RaylibThread,
