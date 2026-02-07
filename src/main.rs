@@ -15,7 +15,7 @@ use std::{
 
 use gameboy::Gameboy;
 
-use crate::instructions::Instruction;
+use crate::{gameboy::GbOptions, instructions::Instruction};
 
 pub fn main() {
     // decode_file("resources/game.gb");
@@ -24,7 +24,14 @@ pub fn main() {
 
 pub fn create_and_run(cartridge_path: &Path) {
     configure_logger();
-    let mut gb = Gameboy::new(false, cartridge_path);
+    let mut gb = Gameboy::new(
+        false,
+        Some(cartridge_path),
+        Some(GbOptions {
+            limit_speed: false,
+            render: false,
+        }),
+    );
     gb.boot();
 }
 
@@ -75,11 +82,18 @@ pub fn decode_file<P: AsRef<Path> + std::fmt::Debug + Copy>(path: P) {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::gameboy::Gameboy;
+    use crate::gameboy::{Gameboy, GbOptions};
 
     #[test]
     fn test_roms() {
-        let mut gb = Gameboy::new(true, &PathBuf::from("resources/cpu_instrs.gb"));
+        let mut gb = Gameboy::new(
+            true,
+            Some(&PathBuf::from("resources/cpu_instrs.gb")),
+            Some(GbOptions {
+                limit_speed: false,
+                render: false,
+            }),
+        );
         gb.boot();
     }
 }
