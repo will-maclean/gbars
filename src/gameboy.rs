@@ -17,48 +17,63 @@ pub static mut DUMP_INFO_TICK: bool = false;
 const CLOCK_SPEED_HZ: f32 = 4.194304e6;
 const DESIRED_RENDER_FPS: f32 = 30.0;
 
+pub struct GbOptions {
+    pub limit_speed: bool,
+    pub render: bool,
+}
+
+impl Default for GbOptions {
+    fn default() -> Self {
+        Self {
+            limit_speed: true,
+            render: true,
+        }
+    }
+}
+
 pub struct Gameboy {
     bus: MemoryBus,
     cpu: CPU,
-    display: GbDisplay,
+    display: Option<GbDisplay>,
     ppu: Rc<RefCell<PPU>>,
     running: bool,
+    options: GbOptions,
 }
 
 impl Gameboy {
-    pub fn new(debug_mode: bool, cartridge_path: &Path) -> Self {
-        let display = GbDisplay::start();
+    pub fn new(
+        debug_mode: bool,
+        cartridge_path: Option<&Path>,
+        options: Option<GbOptions>,
+    ) -> Self {
+        let options = options.unwrap_or(GbOptions::default());
+        let display = if options.render {
+            let d = GbDisplay::start();
 
-        if let Err(_) = display {
-            panic!("Failed to start display!");
-        }
+            if d.is_err() {
+                panic!("Failed to start display!");
+            }
 
-        let ppu = Rc::new(RefCell::new(PPU::new()));
-
-        Self {
-            bus: MemoryBus::new_and_load_bios(Some(create_cartridge(cartridge_path)), ppu.clone()),
-            cpu: CPU::new(debug_mode),
-            running: false,
-            ppu,
-            display: display.unwrap(),
-        }
-    }
-
-    pub fn new_and_empty(debug_mode: bool) -> Self {
-        let display = GbDisplay::start();
-
-        if let Err(_) = display {
-            panic!("Failed to start display!");
-        }
+            Some(d.unwrap())
+        } else {
+            None
+        };
 
         let ppu = Rc::new(RefCell::new(PPU::new()));
 
+        let bus = if let Some(cp) = cartridge_path {
+            MemoryBus::new_and_load_bios(Some(create_cartridge(cp)), ppu.clone())
+        } else {
+            MemoryBus::new_and_empty(None, ppu.clone())
+        };
+
         Self {
-            bus: MemoryBus::new_and_empty(None, ppu.clone()),
+            bus,
             cpu: CPU::new(debug_mode),
             running: false,
             ppu,
-            display: display.unwrap(),
+            display,
+            options,
         }
     }
 
@@ -91,13 +106,17 @@ impl Gameboy {
 
             self.running &= self.ppu.borrow_mut().step(&mut self.bus);
 
-            if Instant::now() - m_tick_duration < last_m_tick {
+            if self.options.limit_speed && Instant::now() - m_tick_duration < last_m_tick {
                 sleep(m_tick_duration - (Instant::now() - last_m_tick));
                 last_m_tick = Instant::now();
             }
 
-            if Instant::now() - render_tick_duration > last_render {
-                self.running &= self.display.render(&self.bus, &self.ppu.borrow_mut());
+            if self.options.render && Instant::now() - render_tick_duration > last_render {
+                self.running &= self
+                    .display
+                    .as_mut()
+                    .unwrap()
+                    .render(&self.bus, &self.ppu.borrow_mut());
                 last_render = Instant::now();
                 debug!("Render");
             }
